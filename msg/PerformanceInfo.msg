@@ -1,0 +1,8 @@
+float64 total_time_ms
+float64 image_conversion_ms
+float64 preprocessing_ms
+float64 inference_ms
+float64 postprocessing_ms
+float64 message_creation_ms
+int32 detections_count
+float64 fps

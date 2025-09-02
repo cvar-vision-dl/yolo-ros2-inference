@@ -1,0 +1,35 @@
+<?xml version="1.0"?>
+<!-- package.xml -->
+<package format="3">
+  <name>yolo_inference_cpp</name>
+  <version>1.0.0</version>
+  <description>High-performance YOLO inference for drones using TensorRT and ONNX Runtime</description>
+
+  <maintainer email="your.email@example.com">Your Name</maintainer>
+  <license>MIT</license>
+
+  <buildtool_depend>ament_cmake</buildtool_depend>
+
+  <!-- Core dependencies -->
+  <depend>rclcpp</depend>
+  <depend>std_msgs</depend>
+  <depend>sensor_msgs</depend>
+  <depend>geometry_msgs</depend>
+  <depend>cv_bridge</depend>
+  <depend>image_transport</depend>
+
+  <!-- OpenCV -->
+  <depend>libopencv-dev</depend>
+
+  <!-- Message generation -->
+  <build_depend>rosidl_default_generators</build_depend>
+  <exec_depend>rosidl_default_runtime</exec_depend>
+
+  <!-- Testing -->
+  <test_depend>ament_lint_auto</test_depend>
+  <test_depend>ament_lint_common</test_depend>
+
+  <export>
+    <build_type>ament_cmake</build_type>
+  </export>
+</package>
