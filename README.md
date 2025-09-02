@@ -375,14 +375,5 @@ MIT License - see LICENSE file for details.
 - **Discussions**: Ask questions and share experiences in GitHub Discussions
 - **Documentation**: Additional documentation available in the `docs/` directory
 
-## Roadmap
-
-- [ ] Support for YOLO v8/v9 models
-- [ ] Multi-GPU inference support
-- [ ] Dynamic batch processing
-- [ ] INT8 quantization support
-- [ ] ROS2 service interface
-- [ ] Web-based monitoring dashboard
-
 ## Authors
 Alejandro Rodríguez-Ramos [alejandro.dosr@gmail.com]
