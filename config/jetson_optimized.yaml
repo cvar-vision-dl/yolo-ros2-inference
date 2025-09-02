@@ -1,0 +1,23 @@
+# Jetson-optimized configuration for drone applications
+yolo_inference_node:
+  ros__parameters:
+    # Model configuration
+    model_path: "models/yolo11n-pose-jetson-fp16.engine"
+    task: "pose"
+    input_size: 640
+
+    # Detection thresholds optimized for drone scenarios
+    confidence_threshold: 0.65
+    nms_threshold: 0.45
+    keypoint_threshold: 0.4
+    max_detections: 8
+
+    # Performance settings for real-time operation
+    publish_visualization: false  # Disable for maximum performance
+    enable_profiling: true       # Monitor performance
+
+    # Topics
+    input_topic: "/camera/image_raw/compressed"
+    output_topic: "/drone/keypoints"
+    output_image_topic: "/drone/debug_image"  # Only used if visualization enabled
+    performance_topic: "/drone/performance"

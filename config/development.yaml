@@ -1,0 +1,23 @@
+# Development configuration with visualization enabled
+yolo_inference_node:
+  ros__parameters:
+    # Model configuration
+    model_path: "models/yolo11n-pose.onnx"
+    task: "pose"
+    input_size: 640
+
+    # Detection thresholds
+    confidence_threshold: 0.5
+    nms_threshold: 0.4
+    keypoint_threshold: 0.3
+    max_detections: 20
+
+    # Development settings
+    publish_visualization: true
+    enable_profiling: true
+
+    # Topics
+    input_topic: "/camera/image_raw/compressed"
+    output_topic: "/yolo/detections"
+    output_image_topic: "/yolo/result_image"
+    performance_topic: "/yolo/performance"
