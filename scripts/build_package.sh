@@ -9,13 +9,13 @@ echo "Building YOLO Inference C++ package..."
 source /opt/ros/humble/setup.bash
 
 # Create workspace if needed
-WORKSPACE_DIR="${WORKSPACE_DIR:-$HOME/ros2_ws}"
-if [ ! -d "$WORKSPACE_DIR" ]; then
-    echo "Creating workspace at $WORKSPACE_DIR"
-    mkdir -p "$WORKSPACE_DIR/src"
-fi
-
-cd "$WORKSPACE_DIR"
+#WORKSPACE_DIR="${WORKSPACE_DIR:-$HOME/ros2_ws}"
+#if [ ! -d "$WORKSPACE_DIR" ]; then
+#    echo "Creating workspace at $WORKSPACE_DIR"
+#    mkdir -p "$WORKSPACE_DIR/src"
+#fi
+#
+#cd "$WORKSPACE_DIR"
 
 # Install rosdep dependencies
 echo "Installing ROS dependencies..."
@@ -64,7 +64,7 @@ colcon build \
     --event-handlers console_direct+
 
 echo "Build completed successfully!"
-echo ""
-echo "To use the package:"
-echo "  source $WORKSPACE_DIR/install/setup.bash"
-echo ""
+#echo ""
+#echo "To use the package:"
+#echo "  source $WORKSPACE_DIR/install/setup.bash"
+#echo ""

@@ -276,7 +276,7 @@ std::vector<Detection> TensorRTBackend::postProcessPose(float* output,
     float scale_x = static_cast<float>(original_size.width) / input_size.width;
     float scale_y = static_cast<float>(original_size.height) / input_size.height;
 
-    std::vector<cv::Rect2f> boxes;
+    std::vector<cv::Rect> boxes;
     std::vector<float> confidences;
     std::vector<std::vector<cv::Point3f>> keypoints_list;
 
@@ -296,7 +296,8 @@ std::vector<Detection> TensorRTBackend::postProcessPose(float* output,
             float x2 = (cx + w/2) * scale_x;
             float y2 = (cy + h/2) * scale_y;
 
-            boxes.push_back(cv::Rect2f(x1, y1, x2-x1, y2-y1));
+            boxes.push_back(cv::Rect(static_cast<int>(x1), static_cast<int>(y1),
+                        static_cast<int>(x2-x1), static_cast<int>(y2-y1)));
             confidences.push_back(conf);
 
             // Extract keypoints

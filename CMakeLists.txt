@@ -69,6 +69,32 @@ set(COMPILE_DEFINITIONS "")
 set(LINK_LIBRARIES "")
 
 # TensorRT support
+find_path(TENSORRT_INCLUDE_DIR NvInfer.h
+  HINTS ${TENSORRT_ROOT} ${CUDA_TOOLKIT_ROOT_DIR} /usr/include /usr/local/include
+  PATH_SUFFIXES include cuda/include)
+
+find_library(TENSORRT_LIBRARY nvinfer
+  HINTS ${TENSORRT_ROOT} ${TENSORRT_BUILD} ${CUDA_TOOLKIT_ROOT_DIR} /usr/lib /usr/local/lib
+  PATH_SUFFIXES lib lib64 lib/x64 cuda/lib64)
+
+find_library(TENSORRT_PLUGIN_LIBRARY nvinfer_plugin
+  HINTS ${TENSORRT_ROOT} ${TENSORRT_BUILD} ${CUDA_TOOLKIT_ROOT_DIR} /usr/lib /usr/local/lib
+  PATH_SUFFIXES lib lib64 lib/x64 cuda/lib64)
+
+# ONNX Runtime
+find_path(ONNXRUNTIME_INCLUDE_DIR onnxruntime_cxx_api.h
+  HINTS ${ONNXRUNTIME_ROOT} /usr/local/onnxruntime $ENV{ONNXRUNTIME_ROOT}
+  PATH_SUFFIXES include)
+
+find_library(ONNXRUNTIME_LIBRARY onnxruntime
+  HINTS ${ONNXRUNTIME_ROOT} /usr/local/onnxruntime $ENV{ONNXRUNTIME_ROOT}
+  PATH_SUFFIXES lib lib64)
+
+# Conditional compilation flags
+set(COMPILE_DEFINITIONS "")
+set(LINK_LIBRARIES "")
+
+# TensorRT support
 if(TENSORRT_INCLUDE_DIR AND TENSORRT_LIBRARY)
   message(STATUS "TensorRT found: ${TENSORRT_LIBRARY}")
   list(APPEND COMPILE_DEFINITIONS "HAVE_TENSORRT")
@@ -97,7 +123,6 @@ add_executable(yolo_inference_node
   src/memory_pool.cpp
   src/profiler.cpp
   src/preprocessing.cpp
-  src/postprocessing.cpp
 )
 
 # Add compile definitions
@@ -121,8 +146,8 @@ target_link_libraries(yolo_inference_node
 )
 
 # Link against the generated messages
-rosidl_target_interfaces(yolo_inference_node
-  ${PROJECT_NAME} "rosidl_typesupport_cpp")
+rosidl_get_typesupport_target(cpp_typesupport_target ${PROJECT_NAME} "rosidl_typesupport_cpp")
+target_link_libraries(yolo_inference_node ${cpp_typesupport_target})
 
 # Install
 install(TARGETS yolo_inference_node

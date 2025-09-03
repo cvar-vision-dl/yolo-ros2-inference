@@ -2,8 +2,8 @@
 #include "yolo_inference_cpp/inference_backend.hpp"
 #include "yolo_inference_cpp/profiler.hpp"
 #include "yolo_inference_cpp/memory_pool.hpp"
-#include "yolo_inference_cpp/KeypointDetectionArray.hpp"
-#include "yolo_inference_cpp/PerformanceInfo.hpp"
+#include "yolo_inference_cpp/msg/keypoint_detection_array.hpp"
+#include "yolo_inference_cpp/msg/performance_info.hpp"
 
 #include <rclcpp/rclcpp.hpp>
 #include <sensor_msgs/msg/compressed_image.hpp>
@@ -56,7 +56,7 @@ public:
         task_type_ = stringToTaskType(task_str_);
 
         // Initialize memory pool (4MB default)
-        memory_pool_ = std::make_unique<MemoryPool>(4 * 1024 * 1024);
+        memory_pool_ = std::make_unique<MemoryPool>(8 * 1024 * 1024);
 
         // Initialize profiler
         if (enable_profiling_) {
@@ -81,7 +81,7 @@ public:
             std::bind(&YOLOInferenceNode::imageCallback, this, std::placeholders::_1));
 
         // Initialize publishers
-        detections_pub_ = create_publisher<yolo_inference::msg::KeypointDetectionArray>(
+        detections_pub_ = create_publisher<yolo_inference_cpp::msg::KeypointDetectionArray>(
             output_topic_, 10);
 
         raw_output_pub_ = create_publisher<std_msgs::msg::String>(
@@ -93,7 +93,7 @@ public:
         }
 
         if (enable_profiling_) {
-            performance_pub_ = create_publisher<yolo_inference::msg::PerformanceInfo>(
+            performance_pub_ = create_publisher<yolo_inference_cpp::msg::PerformanceInfo>(
                 performance_topic_, 10);
         }
 
@@ -115,6 +115,8 @@ public:
 
 private:
     void imageCallback(const sensor_msgs::msg::CompressedImage::SharedPtr msg) {
+        RCLCPP_INFO(get_logger(), "=== Received image: %zu bytes ===",
+                msg->data.size());
         auto total_timer = enable_profiling_ ?
             profiler_->scopedTimer("total_processing") :
             Profiler::ScopedTimer(*profiler_, "dummy"); // Dummy timer if profiling disabled
@@ -136,6 +138,7 @@ private:
                     RCLCPP_ERROR(get_logger(), "Failed to decode compressed image");
                     return;
                 }
+                RCLCPP_INFO(get_logger(), "Image decoded successfully: %dx%d", image.cols, image.rows);
             }
 
             // Run inference
@@ -148,6 +151,8 @@ private:
                                        confidence_threshold_,
                                        nms_threshold_,
                                        keypoint_threshold_);
+                RCLCPP_INFO(get_logger(), "Inference completed: %zu detections, %.2fms",
+                    result.detections.size(), result.inference_time_ms);
             }
 
             // Publish results
@@ -176,7 +181,7 @@ private:
     }
 
     void publishDetections(const InferenceResult& result, const std_msgs::msg::Header& header) {
-        auto msg = yolo_inference::msg::KeypointDetectionArray();
+        auto msg = yolo_inference_cpp::msg::KeypointDetectionArray();
         msg.header = header;
         msg.model_type = backend_->getFormat() == ModelFormat::TENSORRT ? "TensorRT" : "ONNX";
         msg.task = task_str_;
@@ -187,12 +192,12 @@ private:
         for (const auto& detection : result.detections) {
             if (msg.detections.size() >= static_cast<size_t>(max_detections_)) break;
 
-            yolo_inference::msg::KeypointDetection det_msg;
+            yolo_inference_cpp::msg::KeypointDetection det_msg;
             det_msg.header = header;
 
             // Basic detection info
             det_msg.class_id = detection.class_id;
-            det_msg.label = detection.class_id < class_names.size() ?
+            det_msg.label = static_cast<size_t>(detection.class_id) < class_names.size() ?
                           class_names[detection.class_id] : "unknown";
             det_msg.confidence = detection.confidence;
 
@@ -207,7 +212,7 @@ private:
             for (size_t i = 0; i < detection.keypoints.size() && i < keypoint_names.size(); ++i) {
                 const auto& kpt = detection.keypoints[i];
 
-                yolo_inference::msg::Keypoint kpt_msg;
+                yolo_inference_cpp::msg::Keypoint kpt_msg;
                 kpt_msg.name = keypoint_names[i];
                 kpt_msg.x = kpt.x;
                 kpt_msg.y = kpt.y;
@@ -247,7 +252,7 @@ private:
             }
         }
 
-        auto msg = yolo_inference::msg::KeypointDetectionArray();
+        auto msg = yolo_inference_cpp::msg::KeypointDetectionArray();
         msg.header = header;
         msg.raw_output = raw_data;
 
@@ -291,7 +296,7 @@ private:
             cv::rectangle(vis_image, tl, br, color, 2);
 
             // Draw label
-            std::string label = detection.class_id < class_names.size() ?
+            std::string label = static_cast<size_t>(detection.class_id) < class_names.size() ?
                               class_names[detection.class_id] : "unknown";
             label += " " + std::to_string(static_cast<int>(detection.confidence * 100)) + "%";
 
@@ -335,10 +340,10 @@ private:
         image_pub_->publish(*img_msg);
     }
 
-    void publishPerformanceInfo(const std_msgs::msg::Header& header) {
+    void publishPerformanceInfo(const std_msgs::msg::Header& /*header*/) {
         if (!enable_profiling_) return;
 
-        auto msg = yolo_inference::msg::PerformanceInfo();
+        auto msg = yolo_inference_cpp::msg::PerformanceInfo();
         msg.total_time_ms = profiler_->getLastTime("total_processing");
         msg.image_conversion_ms = profiler_->getLastTime("image_conversion");
         msg.preprocessing_ms = 0.0; // Included in inference time
@@ -402,10 +407,10 @@ private:
 
     // ROS components
     rclcpp::Subscription<sensor_msgs::msg::CompressedImage>::SharedPtr image_sub_;
-    rclcpp::Publisher<yolo_inference::msg::KeypointDetectionArray>::SharedPtr detections_pub_;
+    rclcpp::Publisher<yolo_inference_cpp::msg::KeypointDetectionArray>::SharedPtr detections_pub_;
     rclcpp::Publisher<std_msgs::msg::String>::SharedPtr raw_output_pub_;
     rclcpp::Publisher<sensor_msgs::msg::Image>::SharedPtr image_pub_;
-    rclcpp::Publisher<yolo_inference::msg::PerformanceInfo>::SharedPtr performance_pub_;
+    rclcpp::Publisher<yolo_inference_cpp::msg::PerformanceInfo>::SharedPtr performance_pub_;
 
     // Performance tracking
     int frame_count_;

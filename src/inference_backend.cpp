@@ -1,4 +1,5 @@
 // src/inference_backend.cpp
+#include "yolo_inference_cpp/memory_pool.hpp"
 #include "yolo_inference_cpp/inference_backend.hpp"
 
 #ifdef HAVE_TENSORRT

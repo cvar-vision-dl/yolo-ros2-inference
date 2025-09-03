@@ -126,6 +126,7 @@ InferenceResult ONNXBackend::infer(const cv::Mat& image,
                                   float conf_threshold,
                                   float nms_threshold,
                                   float keypoint_threshold) {
+    std::cout << "ONNX DEBUG: Starting inference..." << std::endl;
     InferenceResult result;
     result.original_size = image.size();
     result.input_size = cv::Size(input_size_, input_size_);
@@ -133,23 +134,32 @@ InferenceResult ONNXBackend::infer(const cv::Mat& image,
     auto start_time = std::chrono::high_resolution_clock::now();
 
     try {
+        std::cout << "ONNX DEBUG: Starting preprocessing..." << std::endl;
         // Preprocess image
         Preprocessor preprocessor(memory_pool_);
         cv::Mat processed = preprocessor.preprocess(image, input_size_);
 
+        std::cout << "ONNX DEBUG: Preprocessing completed, processed size: "
+                  << processed.rows << "x" << processed.cols << std::endl;
+
         // Create input tensor
+        std::cout << "ONNX DEBUG: Creating input tensor..." << std::endl;
         std::vector<int64_t> input_shape = input_shapes_[0];
         input_shape[0] = 1; // batch size
         input_shape[2] = input_size_; // height
         input_shape[3] = input_size_; // width
+        std::cout << "ONNX DEBUG: Input shape: [" << input_shape[0] << ","
+          << input_shape[1] << "," << input_shape[2] << "," << input_shape[3] << "]" << std::endl;
+
 
         size_t input_tensor_size = 1;
         for (auto& dim : input_shape) {
             input_tensor_size *= dim;
         }
-
+        std::cout << "ONNX DEBUG: Input tensor size: " << input_tensor_size << std::endl;
         std::vector<float> input_tensor_values(processed.ptr<float>(),
                                              processed.ptr<float>() + input_tensor_size);
+        std::cout << "ONNX DEBUG: Input tensor values copied" << std::endl;
 
         std::vector<Ort::Value> input_tensors;
         input_tensors.push_back(Ort::Value::CreateTensor<float>(
@@ -157,12 +167,14 @@ InferenceResult ONNXBackend::infer(const cv::Mat& image,
             input_shape.data(), input_shape.size()));
 
         // Run inference
+        std::cout << "ONNX DEBUG: About to run session..." << std::endl;
         auto output_tensors = session_->Run(Ort::RunOptions{nullptr},
                                           input_names_.data(),
                                           input_tensors.data(),
                                           input_names_.size(),
                                           output_names_.data(),
                                           output_names_.size());
+        std::cout << "ONNX DEBUG: Session run completed!" << std::endl;
 
         auto end_time = std::chrono::high_resolution_clock::now();
         result.inference_time_ms = std::chrono::duration<double, std::milli>(
@@ -222,7 +234,7 @@ std::vector<Detection> ONNXBackend::postProcessPose(const float* output,
     float scale_x = static_cast<float>(original_size.width) / input_size.width;
     float scale_y = static_cast<float>(original_size.height) / input_size.height;
 
-    std::vector<cv::Rect2f> boxes;
+    std::vector<cv::Rect> boxes;
     std::vector<float> confidences;
     std::vector<std::vector<cv::Point3f>> keypoints_list;
 
@@ -244,7 +256,8 @@ std::vector<Detection> ONNXBackend::postProcessPose(const float* output,
             float x2 = (cx + w/2) * scale_x;
             float y2 = (cy + h/2) * scale_y;
 
-            boxes.push_back(cv::Rect2f(x1, y1, x2-x1, y2-y1));
+            boxes.push_back(cv::Rect(static_cast<int>(x1), static_cast<int>(y1),
+                        static_cast<int>(x2-x1), static_cast<int>(y2-y1)));
             confidences.push_back(conf);
 
             // Extract keypoints

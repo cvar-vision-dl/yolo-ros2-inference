@@ -76,3 +76,5 @@ void Profiler::logStats() const {
     }
     std::cout << "==============================\n" << std::endl;
 }
+
+} // namespace yolo_inference
