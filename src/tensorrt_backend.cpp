@@ -14,9 +14,8 @@ void TensorRTLogger::log(Severity severity, const char* msg) noexcept {
     }
 }
 
-TensorRTBackend::TensorRTBackend(MemoryPool& memory_pool)
-    : memory_pool_(memory_pool)
-    , task_type_(TaskType::POSE)
+TensorRTBackend::TensorRTBackend()
+    : task_type_(TaskType::POSE)
     , input_size_(640)
     , initialized_(false)
     , stream_(nullptr)
@@ -206,7 +205,7 @@ InferenceResult TensorRTBackend::infer(const cv::Mat& image,
     auto start_time = std::chrono::high_resolution_clock::now();
 
     // Preprocess image
-    Preprocessor preprocessor(memory_pool_);
+    Preprocessor preprocessor;
     cv::Mat processed = preprocessor.preprocess(image, input_size_);
 
     // Copy data to host buffer

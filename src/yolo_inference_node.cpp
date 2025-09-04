@@ -1,7 +1,5 @@
-// src/yolo_inference_node.cpp
 #include "yolo_inference_cpp/inference_backend.hpp"
 #include "yolo_inference_cpp/profiler.hpp"
-#include "yolo_inference_cpp/memory_pool.hpp"
 #include "yolo_inference_cpp/msg/keypoint_detection_array.hpp"
 #include "yolo_inference_cpp/msg/performance_info.hpp"
 
@@ -54,9 +52,6 @@ public:
 
         // Parse task
         task_type_ = stringToTaskType(task_str_);
-
-        // Initialize memory pool (4MB default)
-        memory_pool_ = std::make_unique<MemoryPool>(8 * 1024 * 1024);
 
         // Initialize profiler
         if (enable_profiling_) {
@@ -119,12 +114,9 @@ private:
                 msg->data.size());
         auto total_timer = enable_profiling_ ?
             profiler_->scopedTimer("total_processing") :
-            Profiler::ScopedTimer(*profiler_, "dummy"); // Dummy timer if profiling disabled
+            Profiler::ScopedTimer(*profiler_, "dummy");
 
         try {
-            // Reset memory pool for each frame
-            memory_pool_->reset();
-
             // Convert compressed image to OpenCV Mat
             cv::Mat image;
             {
@@ -346,11 +338,11 @@ private:
         auto msg = yolo_inference_cpp::msg::PerformanceInfo();
         msg.total_time_ms = profiler_->getLastTime("total_processing");
         msg.image_conversion_ms = profiler_->getLastTime("image_conversion");
-        msg.preprocessing_ms = 0.0; // Included in inference time
+        msg.preprocessing_ms = 0.0;
         msg.inference_ms = profiler_->getLastTime("inference");
-        msg.postprocessing_ms = 0.0; // Included in inference time
+        msg.postprocessing_ms = 0.0;
         msg.message_creation_ms = profiler_->getLastTime("message_creation");
-        msg.detections_count = 0; // Will be set by callback
+        msg.detections_count = 0;
         msg.fps = frame_count_ > 0 ? frame_count_ / total_time_ : 0.0;
 
         performance_pub_->publish(msg);
@@ -402,7 +394,6 @@ private:
 
     // Core components
     std::unique_ptr<InferenceBackend> backend_;
-    std::unique_ptr<MemoryPool> memory_pool_;
     std::unique_ptr<Profiler> profiler_;
 
     // ROS components

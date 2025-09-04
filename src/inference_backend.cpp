@@ -1,15 +1,10 @@
-// src/inference_backend.cpp
-#include "yolo_inference_cpp/memory_pool.hpp"
 #include "yolo_inference_cpp/inference_backend.hpp"
-
 #ifdef HAVE_TENSORRT
 #include "yolo_inference_cpp/tensorrt_backend.hpp"
 #endif
-
 #ifdef HAVE_ONNXRUNTIME
 #include "yolo_inference_cpp/onnx_backend.hpp"
 #endif
-
 #include <filesystem>
 #include <iostream>
 
@@ -48,28 +43,23 @@ TaskType stringToTaskType(const std::string& task_str) {
 std::unique_ptr<InferenceBackend> createInferenceBackend(const std::string& model_path) {
     ModelFormat format = detectModelFormat(model_path);
 
-    // Create memory pool (shared across backends)
-    static auto memory_pool = std::make_unique<MemoryPool>();
-
     switch (format) {
         case ModelFormat::TENSORRT:
 #ifdef HAVE_TENSORRT
             std::cout << "Creating TensorRT backend for: " << model_path << std::endl;
-            return std::make_unique<TensorRTBackend>(*memory_pool);
+            return std::make_unique<TensorRTBackend>();
 #else
             std::cerr << "TensorRT support not compiled. Please rebuild with TensorRT support." << std::endl;
             return nullptr;
 #endif
-
         case ModelFormat::ONNX:
 #ifdef HAVE_ONNXRUNTIME
             std::cout << "Creating ONNX Runtime backend for: " << model_path << std::endl;
-            return std::make_unique<ONNXBackend>(*memory_pool);
+            return std::make_unique<ONNXBackend>();
 #else
             std::cerr << "ONNX Runtime support not compiled. Please rebuild with ONNX Runtime support." << std::endl;
             return nullptr;
 #endif
-
         default:
             std::cerr << "Unsupported model format for: " << model_path << std::endl;
             return nullptr;

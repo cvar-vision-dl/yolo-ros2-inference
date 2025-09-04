@@ -1,13 +1,12 @@
 #pragma once
 
 #include <opencv2/opencv.hpp>
-#include "memory_pool.hpp"
 
 namespace yolo_inference {
 
 class Preprocessor {
 public:
-    Preprocessor(MemoryPool& memory_pool);
+    Preprocessor();
 
     cv::Mat preprocess(const cv::Mat& input,
                       int target_size,
@@ -20,7 +19,6 @@ public:
     cv::Point2f getPadding() const { return padding_; }
 
 private:
-    MemoryPool& memory_pool_;
     cv::Size2f scale_factors_;
     cv::Point2f padding_;
 };

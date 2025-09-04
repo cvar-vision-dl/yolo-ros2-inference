@@ -120,7 +120,6 @@ add_executable(yolo_inference_node
   src/inference_backend.cpp
   src/tensorrt_backend.cpp
   src/onnx_backend.cpp
-  src/memory_pool.cpp
   src/profiler.cpp
   src/preprocessing.cpp
 )

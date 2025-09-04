@@ -3,7 +3,6 @@
 #ifdef HAVE_ONNXRUNTIME
 
 #include "inference_backend.hpp"
-#include "memory_pool.hpp"
 #include <onnxruntime_cxx_api.h>
 #include <memory>
 
@@ -11,7 +10,7 @@ namespace yolo_inference {
 
 class ONNXBackend : public InferenceBackend {
 public:
-    ONNXBackend(MemoryPool& memory_pool);
+    ONNXBackend();
     ~ONNXBackend() override;
 
     bool initialize(const std::string& model_path,
@@ -45,7 +44,6 @@ private:
                                               float conf_threshold,
                                               float nms_threshold);
 
-    MemoryPool& memory_pool_;
     TaskType task_type_;
     int input_size_;
     bool initialized_;
@@ -57,8 +55,8 @@ private:
     std::unique_ptr<Ort::MemoryInfo> memory_info_;
 
     // Model info
-    std::vector<const char*> input_names_;
-    std::vector<const char*> output_names_;
+    std::vector<std::string> input_names_;
+    std::vector<std::string> output_names_;
     std::vector<std::vector<int64_t>> input_shapes_;
     std::vector<std::vector<int64_t>> output_shapes_;
 

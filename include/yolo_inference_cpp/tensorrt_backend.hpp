@@ -3,7 +3,6 @@
 #ifdef HAVE_TENSORRT
 
 #include "inference_backend.hpp"
-#include "memory_pool.hpp"
 #include <NvInfer.h>
 #include <cuda_runtime.h>
 #include <memory>
@@ -17,7 +16,7 @@ public:
 
 class TensorRTBackend : public InferenceBackend {
 public:
-    TensorRTBackend(MemoryPool& memory_pool);
+    TensorRTBackend();
     ~TensorRTBackend() override;
 
     bool initialize(const std::string& model_path,
@@ -54,7 +53,6 @@ private:
                                          float nms_threshold,
                                          float keypoint_threshold);
 
-    MemoryPool& memory_pool_;
     TaskType task_type_;
     int input_size_;
     bool initialized_;

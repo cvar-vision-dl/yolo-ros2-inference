@@ -7,9 +7,8 @@
 
 namespace yolo_inference {
 
-ONNXBackend::ONNXBackend(MemoryPool& memory_pool)
-    : memory_pool_(memory_pool)
-    , task_type_(TaskType::POSE)
+ONNXBackend::ONNXBackend()
+    : task_type_(TaskType::POSE)
     , input_size_(640)
     , initialized_(false) {
 }
@@ -72,28 +71,20 @@ bool ONNXBackend::initialize(const std::string& model_path,
             output_shapes_.push_back(output_shape);
         }
 
-        // Initialize class names (COCO classes)
         class_names_ = {
-            "person", "bicycle", "car", "motorcycle", "airplane", "bus", "train", "truck",
-            "boat", "traffic light", "fire hydrant", "stop sign", "parking meter", "bench",
-            "bird", "cat", "dog", "horse", "sheep", "cow", "elephant", "bear", "zebra",
-            "giraffe", "backpack", "umbrella", "handbag", "tie", "suitcase", "frisbee",
-            "skis", "snowboard", "sports ball", "kite", "baseball bat", "baseball glove",
-            "skateboard", "surfboard", "tennis racket", "bottle", "wine glass", "cup",
-            "fork", "knife", "spoon", "bowl", "banana", "apple", "sandwich", "orange",
-            "broccoli", "carrot", "hot dog", "pizza", "donut", "cake", "chair", "couch",
-            "potted plant", "bed", "dining table", "toilet", "tv", "laptop", "mouse",
-            "remote", "keyboard", "cell phone", "microwave", "oven", "toaster", "sink",
-            "refrigerator", "book", "clock", "vase", "scissors", "teddy bear", "hair drier",
-            "toothbrush"
+            "gate"
         };
 
         // Initialize keypoint names (COCO pose format)
         keypoint_names_ = {
-            "nose", "left_eye", "right_eye", "left_ear", "right_ear",
-            "left_shoulder", "right_shoulder", "left_elbow", "right_elbow",
-            "left_wrist", "right_wrist", "left_hip", "right_hip",
-            "left_knee", "right_knee", "left_ankle", "right_ankle"
+            "bottom_right_outer",
+            "bottom_left_outer",
+            "top_right_outer",
+            "top_left_outer",
+            "bottom_right_inner",
+            "bottom_left_inner",
+            "top_right_inner",
+            "top_left_inner"
         };
 
         initialized_ = true;
@@ -136,7 +127,7 @@ InferenceResult ONNXBackend::infer(const cv::Mat& image,
     try {
         std::cout << "ONNX DEBUG: Starting preprocessing..." << std::endl;
         // Preprocess image
-        Preprocessor preprocessor(memory_pool_);
+        Preprocessor preprocessor;
         cv::Mat processed = preprocessor.preprocess(image, input_size_);
 
         std::cout << "ONNX DEBUG: Preprocessing completed, processed size: "
@@ -150,7 +141,6 @@ InferenceResult ONNXBackend::infer(const cv::Mat& image,
         input_shape[3] = input_size_; // width
         std::cout << "ONNX DEBUG: Input shape: [" << input_shape[0] << ","
           << input_shape[1] << "," << input_shape[2] << "," << input_shape[3] << "]" << std::endl;
-
 
         size_t input_tensor_size = 1;
         for (auto& dim : input_shape) {
@@ -168,12 +158,24 @@ InferenceResult ONNXBackend::infer(const cv::Mat& image,
 
         // Run inference
         std::cout << "ONNX DEBUG: About to run session..." << std::endl;
+
+        // Convert string vectors to const char* arrays for ONNX Runtime
+        std::vector<const char*> input_name_ptrs;
+        std::vector<const char*> output_name_ptrs;
+
+        for (const auto& name : input_names_) {
+            input_name_ptrs.push_back(name.c_str());
+        }
+        for (const auto& name : output_names_) {
+            output_name_ptrs.push_back(name.c_str());
+        }
+
         auto output_tensors = session_->Run(Ort::RunOptions{nullptr},
-                                          input_names_.data(),
+                                          input_name_ptrs.data(),
                                           input_tensors.data(),
-                                          input_names_.size(),
-                                          output_names_.data(),
-                                          output_names_.size());
+                                          input_name_ptrs.size(),
+                                          output_name_ptrs.data(),
+                                          output_name_ptrs.size());
         std::cout << "ONNX DEBUG: Session run completed!" << std::endl;
 
         auto end_time = std::chrono::high_resolution_clock::now();
@@ -217,19 +219,56 @@ std::vector<Detection> ONNXBackend::postProcessPose(const float* output,
                                                    float keypoint_threshold) {
     std::vector<Detection> detections;
 
-    // YOLO pose output format: [batch, anchors, (x,y,w,h,conf,class_conf) + keypoints*3]
-    // For pose models: [1, 8400, 56] where 56 = 4+1+1+17*3
-
     if (output_shape.size() != 3) {
         std::cerr << "Unexpected output shape dimensions: " << output_shape.size() << std::endl;
         return detections;
     }
 
-    int64_t batch_size = output_shape[0];
-    int64_t num_anchors = output_shape[1];
-    int64_t data_size = output_shape[2];
+    std::cout << "ONNX DEBUG: Output shape: [" << output_shape[0] << ", "
+              << output_shape[1] << ", " << output_shape[2] << "]" << std::endl;
+    std::cout << "ONNX DEBUG: Confidence threshold: " << conf_threshold << std::endl;
 
-    int num_keypoints = (data_size - 6) / 3; // (total - bbox - conf - class) / 3
+    int64_t batch_size = output_shape[0];
+    int64_t dim1 = output_shape[1];
+    int64_t dim2 = output_shape[2];
+
+    // Standard YOLO output is typically [1, num_anchors, features] or [1, features, num_anchors]
+    // For 8 keypoints: features = 4(bbox) + 1(conf) + 8*3(keypoints) = 29
+    // So we expect either [1, 8400, 29] or [1, 29, 8400]
+
+    int64_t num_anchors, features;
+    bool transposed = false;
+
+    if (dim1 == 29 && dim2 > 1000) {
+        // Format: [1, 29, 8400]
+        features = dim1;
+        num_anchors = dim2;
+        transposed = true;
+        std::cout << "ONNX DEBUG: Detected transposed format [1, 29, " << num_anchors << "]" << std::endl;
+    } else if (dim2 == 29 && dim1 > 1000) {
+        // Format: [1, 8400, 29]
+        num_anchors = dim1;
+        features = dim2;
+        transposed = false;
+        std::cout << "ONNX DEBUG: Detected standard format [1, " << num_anchors << ", 29]" << std::endl;
+    } else {
+        std::cerr << "ONNX DEBUG: Unexpected dimensions - dim1: " << dim1 << ", dim2: " << dim2 << std::endl;
+        // Try to guess based on which dimension is larger
+        if (dim1 > dim2) {
+            num_anchors = dim1;
+            features = dim2;
+            transposed = false;
+        } else {
+            features = dim1;
+            num_anchors = dim2;
+            transposed = true;
+        }
+    }
+
+    int num_keypoints = (features - 5) / 3;
+    if (num_keypoints != 8) {
+        std::cout << "ONNX DEBUG: Warning - expected 8 keypoints, got " << num_keypoints << std::endl;
+    }
 
     float scale_x = static_cast<float>(original_size.width) / input_size.width;
     float scale_y = static_cast<float>(original_size.height) / input_size.height;
@@ -238,17 +277,40 @@ std::vector<Detection> ONNXBackend::postProcessPose(const float* output,
     std::vector<float> confidences;
     std::vector<std::vector<cv::Point3f>> keypoints_list;
 
-    for (int64_t i = 0; i < num_anchors; ++i) {
-        const float* anchor_data = output + i * data_size;
+    int valid_detections = 0;
+    int high_conf_detections = 0;
 
-        float conf = anchor_data[4]; // Object confidence
+    for (int64_t i = 0; i < num_anchors; ++i) {
+        float cx, cy, w, h, conf;
+
+        // Extract basic detection data based on tensor layout
+        if (transposed) {
+            // [features, anchors] layout
+            cx = output[0 * num_anchors + i];
+            cy = output[1 * num_anchors + i];
+            w = output[2 * num_anchors + i];
+            h = output[3 * num_anchors + i];
+            conf = output[4 * num_anchors + i];
+        } else {
+            // [anchors, features] layout
+            const float* anchor_data = output + i * features;
+            cx = anchor_data[0];
+            cy = anchor_data[1];
+            w = anchor_data[2];
+            h = anchor_data[3];
+            conf = anchor_data[4];
+        }
+
+        // Debug first few detections
+        if (i < 5) {
+            std::cout << "ONNX DEBUG: Anchor " << i << " - conf: " << conf
+                      << ", bbox: [" << cx << ", " << cy << ", " << w << ", " << h << "]" << std::endl;
+        }
+
+        if (conf > 0.01) high_conf_detections++;  // Count any reasonable confidence
 
         if (conf >= conf_threshold) {
-            // Extract bounding box (center format)
-            float cx = anchor_data[0];
-            float cy = anchor_data[1];
-            float w = anchor_data[2];
-            float h = anchor_data[3];
+            valid_detections++;
 
             // Convert to corner format and scale
             float x1 = (cx - w/2) * scale_x;
@@ -256,32 +318,58 @@ std::vector<Detection> ONNXBackend::postProcessPose(const float* output,
             float x2 = (cx + w/2) * scale_x;
             float y2 = (cy + h/2) * scale_y;
 
-            boxes.push_back(cv::Rect(static_cast<int>(x1), static_cast<int>(y1),
-                        static_cast<int>(x2-x1), static_cast<int>(y2-y1)));
-            confidences.push_back(conf);
+            // Sanity check bounds
+            if (x1 >= 0 && y1 >= 0 && x2 > x1 && y2 > y1 &&
+                x1 < original_size.width && y1 < original_size.height) {
 
-            // Extract keypoints
-            std::vector<cv::Point3f> kpts;
-            for (int k = 0; k < num_keypoints; ++k) {
-                float kx = anchor_data[6 + k*3] * scale_x;
-                float ky = anchor_data[6 + k*3 + 1] * scale_y;
-                float kconf = anchor_data[6 + k*3 + 2];
+                boxes.push_back(cv::Rect(static_cast<int>(x1), static_cast<int>(y1),
+                            static_cast<int>(x2-x1), static_cast<int>(y2-y1)));
+                confidences.push_back(conf);
 
-                kpts.push_back(cv::Point3f(kx, ky, kconf));
+                // Extract keypoints (8 keypoints for gate)
+                std::vector<cv::Point3f> kpts;
+                for (int k = 0; k < 8 && k < num_keypoints; ++k) {
+                    float kx, ky, kconf;
+
+                    if (transposed) {
+                        kx = output[(5 + k*3) * num_anchors + i] * scale_x;
+                        ky = output[(5 + k*3 + 1) * num_anchors + i] * scale_y;
+                        kconf = output[(5 + k*3 + 2) * num_anchors + i];
+                    } else {
+                        const float* anchor_data = output + i * features;
+                        kx = anchor_data[5 + k*3] * scale_x;
+                        ky = anchor_data[5 + k*3 + 1] * scale_y;
+                        kconf = anchor_data[5 + k*3 + 2];
+                    }
+
+                    kpts.push_back(cv::Point3f(kx, ky, kconf));
+                }
+                keypoints_list.push_back(kpts);
             }
-            keypoints_list.push_back(kpts);
         }
+    }
+
+    std::cout << "ONNX DEBUG: Processed " << num_anchors << " anchors" << std::endl;
+    std::cout << "ONNX DEBUG: Found " << high_conf_detections << " detections with conf > 0.01" << std::endl;
+    std::cout << "ONNX DEBUG: Found " << valid_detections << " detections above threshold " << conf_threshold << std::endl;
+    std::cout << "ONNX DEBUG: Valid boxes after bounds check: " << boxes.size() << std::endl;
+
+    if (boxes.empty()) {
+        std::cout << "ONNX DEBUG: No valid detections found" << std::endl;
+        return detections;
     }
 
     // Apply NMS
     std::vector<int> indices;
     cv::dnn::NMSBoxes(boxes, confidences, conf_threshold, nms_threshold, indices);
 
+    std::cout << "ONNX DEBUG: " << indices.size() << " detections after NMS" << std::endl;
+
     for (int idx : indices) {
         Detection det;
         det.bbox = boxes[idx];
         det.confidence = confidences[idx];
-        det.class_id = 0; // Person class
+        det.class_id = 0; // Gate class
         det.keypoints = keypoints_list[idx];
 
         detections.push_back(det);
