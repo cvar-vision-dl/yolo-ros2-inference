@@ -130,8 +130,14 @@ InferenceResult ONNXBackend::infer(const cv::Mat& image,
         Preprocessor preprocessor;
         cv::Mat processed = preprocessor.preprocess(image, input_size_);
 
+        // Store preprocessing info for coordinate transformation
+        cv::Size2f scale_factors = preprocessor.getScaleFactors();
+        cv::Point2f padding = preprocessor.getPadding();
+
         std::cout << "ONNX DEBUG: Preprocessing completed, processed size: "
                   << processed.rows << "x" << processed.cols << std::endl;
+        std::cout << "ONNX DEBUG: Scale factors: " << scale_factors.width << ", " << scale_factors.height << std::endl;
+        std::cout << "ONNX DEBUG: Padding: " << padding.x << ", " << padding.y << std::endl;
 
         // Create input tensor
         std::cout << "ONNX DEBUG: Creating input tensor..." << std::endl;
@@ -191,6 +197,8 @@ InferenceResult ONNXBackend::infer(const cv::Mat& image,
                                               output_shape,
                                               result.input_size,
                                               result.original_size,
+                                              scale_factors,
+                                              padding,
                                               conf_threshold,
                                               nms_threshold,
                                               keypoint_threshold);
@@ -199,6 +207,8 @@ InferenceResult ONNXBackend::infer(const cv::Mat& image,
                                                    output_shape,
                                                    result.input_size,
                                                    result.original_size,
+                                                   scale_factors,
+                                                   padding,
                                                    conf_threshold,
                                                    nms_threshold);
         }
@@ -214,6 +224,8 @@ std::vector<Detection> ONNXBackend::postProcessPose(const float* output,
                                                    const std::vector<int64_t>& output_shape,
                                                    cv::Size input_size,
                                                    cv::Size original_size,
+                                                   cv::Size2f scale_factors,
+                                                   cv::Point2f padding,
                                                    float conf_threshold,
                                                    float nms_threshold,
                                                    float keypoint_threshold) {
@@ -270,10 +282,16 @@ std::vector<Detection> ONNXBackend::postProcessPose(const float* output,
         std::cout << "ONNX DEBUG: Warning - expected 8 keypoints, got " << num_keypoints << std::endl;
     }
 
-    float scale_x = static_cast<float>(original_size.width) / input_size.width;
-    float scale_y = static_cast<float>(original_size.height) / input_size.height;
+    // Calculate proper coordinate transformation parameters
+    // The preprocessing used uniform scaling and padding to maintain aspect ratio
+    float scale = scale_factors.width; // Both width and height should be the same
+    float pad_x = padding.x;
+    float pad_y = padding.y;
 
-    std::vector<cv::Rect> boxes;
+    std::cout << "ONNX DEBUG: Using scale factor: " << scale << std::endl;
+    std::cout << "ONNX DEBUG: Using padding: (" << pad_x << ", " << pad_y << ")" << std::endl;
+
+    std::vector<cv::Rect2f> boxes;
     std::vector<float> confidences;
     std::vector<std::vector<cv::Point3f>> keypoints_list;
 
@@ -312,18 +330,30 @@ std::vector<Detection> ONNXBackend::postProcessPose(const float* output,
         if (conf >= conf_threshold) {
             valid_detections++;
 
-            // Convert to corner format and scale
-            float x1 = (cx - w/2) * scale_x;
-            float y1 = (cy - h/2) * scale_y;
-            float x2 = (cx + w/2) * scale_x;
-            float y2 = (cy + h/2) * scale_y;
+            // Convert from preprocessed image coordinates to original image coordinates
+            // 1. Remove padding
+            float cx_no_pad = cx - pad_x;
+            float cy_no_pad = cy - pad_y;
+            float w_no_pad = w;  // Width/height scaling is the same as coordinate scaling
+            float h_no_pad = h;
+
+            // 2. Apply inverse scale
+            float cx_orig = cx_no_pad / scale;
+            float cy_orig = cy_no_pad / scale;
+            float w_orig = w_no_pad / scale;
+            float h_orig = h_no_pad / scale;
+
+            // Convert to corner format
+            float x1 = cx_orig - w_orig/2;
+            float y1 = cy_orig - h_orig/2;
+            float x2 = cx_orig + w_orig/2;
+            float y2 = cy_orig + h_orig/2;
 
             // Sanity check bounds
             if (x1 >= 0 && y1 >= 0 && x2 > x1 && y2 > y1 &&
                 x1 < original_size.width && y1 < original_size.height) {
 
-                boxes.push_back(cv::Rect(static_cast<int>(x1), static_cast<int>(y1),
-                            static_cast<int>(x2-x1), static_cast<int>(y2-y1)));
+                boxes.push_back(cv::Rect2f(x1, y1, x2-x1, y2-y1));
                 confidences.push_back(conf);
 
                 // Extract keypoints (8 keypoints for gate)
@@ -332,17 +362,23 @@ std::vector<Detection> ONNXBackend::postProcessPose(const float* output,
                     float kx, ky, kconf;
 
                     if (transposed) {
-                        kx = output[(5 + k*3) * num_anchors + i] * scale_x;
-                        ky = output[(5 + k*3 + 1) * num_anchors + i] * scale_y;
+                        kx = output[(5 + k*3) * num_anchors + i];
+                        ky = output[(5 + k*3 + 1) * num_anchors + i];
                         kconf = output[(5 + k*3 + 2) * num_anchors + i];
                     } else {
                         const float* anchor_data = output + i * features;
-                        kx = anchor_data[5 + k*3] * scale_x;
-                        ky = anchor_data[5 + k*3 + 1] * scale_y;
+                        kx = anchor_data[5 + k*3];
+                        ky = anchor_data[5 + k*3 + 1];
                         kconf = anchor_data[5 + k*3 + 2];
                     }
 
-                    kpts.push_back(cv::Point3f(kx, ky, kconf));
+                    // Apply the same coordinate transformation to keypoints
+                    float kx_no_pad = kx - pad_x;
+                    float ky_no_pad = ky - pad_y;
+                    float kx_orig = kx_no_pad / scale;
+                    float ky_orig = ky_no_pad / scale;
+
+                    kpts.push_back(cv::Point3f(kx_orig, ky_orig, kconf));
                 }
                 keypoints_list.push_back(kpts);
             }
@@ -359,15 +395,22 @@ std::vector<Detection> ONNXBackend::postProcessPose(const float* output,
         return detections;
     }
 
+    // Convert cv::Rect2f to cv::Rect for NMS
+    std::vector<cv::Rect> int_boxes;
+    for (const auto& box : boxes) {
+        int_boxes.push_back(cv::Rect(static_cast<int>(box.x), static_cast<int>(box.y),
+                                    static_cast<int>(box.width), static_cast<int>(box.height)));
+    }
+
     // Apply NMS
     std::vector<int> indices;
-    cv::dnn::NMSBoxes(boxes, confidences, conf_threshold, nms_threshold, indices);
+    cv::dnn::NMSBoxes(int_boxes, confidences, conf_threshold, nms_threshold, indices);
 
     std::cout << "ONNX DEBUG: " << indices.size() << " detections after NMS" << std::endl;
 
     for (int idx : indices) {
         Detection det;
-        det.bbox = boxes[idx];
+        det.bbox = boxes[idx];  // Use the original float bbox
         det.confidence = confidences[idx];
         det.class_id = 0; // Gate class
         det.keypoints = keypoints_list[idx];
@@ -382,9 +425,11 @@ std::vector<Detection> ONNXBackend::postProcessDetection(const float* output,
                                                         const std::vector<int64_t>& output_shape,
                                                         cv::Size input_size,
                                                         cv::Size original_size,
+                                                        cv::Size2f scale_factors,
+                                                        cv::Point2f padding,
                                                         float conf_threshold,
                                                         float nms_threshold) {
-    // Standard YOLO detection post-processing
+    // Standard YOLO detection post-processing with corrected coordinate transformation
     std::vector<Detection> detections;
 
     // Implementation would be similar to pose processing but without keypoints

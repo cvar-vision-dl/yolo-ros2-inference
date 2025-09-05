@@ -1,5 +1,4 @@
 #pragma once
-
 #include <memory>
 #include <string>
 #include <vector>
@@ -20,7 +19,7 @@ enum class ModelFormat {
 };
 
 struct Detection {
-    cv::Rect2f bbox;
+    cv::Rect2f bbox;  // Using float precision for better coordinate accuracy
     float confidence;
     int class_id;
     std::vector<cv::Point3f> keypoints; // x, y, confidence

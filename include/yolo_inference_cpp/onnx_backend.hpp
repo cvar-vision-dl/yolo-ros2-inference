@@ -1,7 +1,5 @@
 #pragma once
-
 #ifdef HAVE_ONNXRUNTIME
-
 #include "inference_backend.hpp"
 #include <onnxruntime_cxx_api.h>
 #include <memory>
@@ -33,6 +31,8 @@ private:
                                          const std::vector<int64_t>& output_shape,
                                          cv::Size input_size,
                                          cv::Size original_size,
+                                         cv::Size2f scale_factors,
+                                         cv::Point2f padding,
                                          float conf_threshold,
                                          float nms_threshold,
                                          float keypoint_threshold);
@@ -41,6 +41,8 @@ private:
                                               const std::vector<int64_t>& output_shape,
                                               cv::Size input_size,
                                               cv::Size original_size,
+                                              cv::Size2f scale_factors,
+                                              cv::Point2f padding,
                                               float conf_threshold,
                                               float nms_threshold);
 

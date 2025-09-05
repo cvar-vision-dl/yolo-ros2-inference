@@ -193,7 +193,7 @@ private:
                           class_names[detection.class_id] : "unknown";
             det_msg.confidence = detection.confidence;
 
-            // Bounding box
+            // Bounding box - convert from cv::Rect2f to message format
             det_msg.bounding_box.x1 = detection.bbox.x;
             det_msg.bounding_box.y1 = detection.bbox.y;
             det_msg.bounding_box.x2 = detection.bbox.x + detection.bbox.width;
@@ -281,11 +281,16 @@ private:
             const auto& detection = result.detections[i];
             cv::Scalar color = colors[i % colors.size()];
 
-            // Draw bounding box
+            // Draw bounding box - convert cv::Rect2f to cv::Rect for drawing
             cv::Point2f tl(detection.bbox.x, detection.bbox.y);
             cv::Point2f br(detection.bbox.x + detection.bbox.width,
                           detection.bbox.y + detection.bbox.height);
-            cv::rectangle(vis_image, tl, br, color, 2);
+
+            // Convert to integer coordinates for drawing
+            cv::Point tl_int(static_cast<int>(std::round(tl.x)), static_cast<int>(std::round(tl.y)));
+            cv::Point br_int(static_cast<int>(std::round(br.x)), static_cast<int>(std::round(br.y)));
+
+            cv::rectangle(vis_image, tl_int, br_int, color, 2);
 
             // Draw label
             std::string label = static_cast<size_t>(detection.class_id) < class_names.size() ?
@@ -295,10 +300,10 @@ private:
             int baseline = 0;
             cv::Size text_size = cv::getTextSize(label, cv::FONT_HERSHEY_SIMPLEX, 0.6, 2, &baseline);
             cv::rectangle(vis_image,
-                         cv::Point(tl.x, tl.y - text_size.height - baseline),
-                         cv::Point(tl.x + text_size.width, tl.y),
+                         cv::Point(tl_int.x, tl_int.y - text_size.height - baseline),
+                         cv::Point(tl_int.x + text_size.width, tl_int.y),
                          color, -1);
-            cv::putText(vis_image, label, cv::Point(tl.x, tl.y - baseline),
+            cv::putText(vis_image, label, cv::Point(tl_int.x, tl_int.y - baseline),
                        cv::FONT_HERSHEY_SIMPLEX, 0.6, cv::Scalar(255, 255, 255), 2);
 
             // Draw keypoints
@@ -306,12 +311,14 @@ private:
                 const auto& kpt = detection.keypoints[j];
                 if (kpt.z > keypoint_threshold_) {  // Only draw visible keypoints
                     cv::Point2f point(kpt.x, kpt.y);
-                    cv::circle(vis_image, point, 4, color, -1);
+                    cv::Point point_int(static_cast<int>(std::round(point.x)),
+                                       static_cast<int>(std::round(point.y)));
+                    cv::circle(vis_image, point_int, 4, color, -1);
 
                     // Draw keypoint name
                     if (j < keypoint_names.size()) {
                         cv::putText(vis_image, keypoint_names[j],
-                                  cv::Point(point.x + 5, point.y - 5),
+                                  cv::Point(point_int.x + 5, point_int.y - 5),
                                   cv::FONT_HERSHEY_SIMPLEX, 0.3, color, 1);
                     }
                 }
