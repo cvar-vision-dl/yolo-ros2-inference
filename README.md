@@ -214,19 +214,6 @@ docker run --runtime nvidia --rm -it \
 
 ## Performance Optimization
 
-### Memory Management
-
-The implementation uses a custom memory pool for zero-allocation inference:
-
-```cpp
-// Pre-allocated memory pool (4MB default)
-MemoryPool memory_pool(4 * 1024 * 1024);
-
-// Reuse memory across frames
-memory_pool.reset();  // Called each frame
-cv::Mat processed = preprocessor.preprocess(image, input_size);
-```
-
 ### TensorRT Optimization
 
 For maximum performance on Jetson:
@@ -356,18 +343,6 @@ python3 tests/test_inference.py
 # Performance tests
 ./tests/benchmark models/test_model.onnx
 ```
-
-### Contributing
-
-1. Fork the repository
-2. Create a feature branch
-3. Add tests for new functionality
-4. Ensure all tests pass
-5. Submit a pull request
-
-## License
-
-MIT License - see LICENSE file for details.
 
 ## Support
 
