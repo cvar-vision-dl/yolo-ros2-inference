@@ -8,9 +8,8 @@ High-performance YOLO inference implementation in C++ for ROS2, optimized for dr
 - **🔧 Dual Backend Support**: TensorRT (best performance) and ONNX Runtime (cross-platform)
 - **📊 Comprehensive Profiling**: Detailed timing analysis for all processing stages
 - **🎯 Multiple Tasks**: Pose detection, object detection, and segmentation support
-- **💾 Memory Efficient**: Custom memory pool for zero-allocation inference
 - **🔌 ROS2 Integration**: Native ROS2 Humble support with custom messages
-- **🐳 Container Ready**: Docker support for both Jetson and x86_64 platforms
+- **🐳 Container Ready**: Docker support for both Jetson and x86_64 platforms [not yet validated]
 - **⚡ Jetson Optimized**: Special optimizations for NVIDIA Jetson platforms
 
 ## Supported Platforms
