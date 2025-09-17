@@ -429,6 +429,16 @@ std::vector<Detection> ONNXBackend::postProcessDetection(const float* output,
                                                         cv::Point2f padding,
                                                         float conf_threshold,
                                                         float nms_threshold) {
+    // Suppress unused parameter warnings
+    (void)output;
+    (void)output_shape;
+    (void)input_size;
+    (void)original_size;
+    (void)scale_factors;
+    (void)padding;
+    (void)conf_threshold;
+    (void)nms_threshold;
+
     // Standard YOLO detection post-processing with corrected coordinate transformation
     std::vector<Detection> detections;
 

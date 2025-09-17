@@ -1,7 +1,5 @@
 #pragma once
-
 #ifdef HAVE_TENSORRT
-
 #include "inference_backend.hpp"
 #include <NvInfer.h>
 #include <cuda_runtime.h>
@@ -43,12 +41,16 @@ private:
     std::vector<Detection> postProcessDetection(float* output,
                                               cv::Size input_size,
                                               cv::Size original_size,
+                                              cv::Size2f scale_factors,
+                                              cv::Point2f padding,
                                               float conf_threshold,
                                               float nms_threshold);
 
     std::vector<Detection> postProcessPose(float* output,
                                          cv::Size input_size,
                                          cv::Size original_size,
+                                         cv::Size2f scale_factors,
+                                         cv::Point2f padding,
                                          float conf_threshold,
                                          float nms_threshold,
                                          float keypoint_threshold);
@@ -65,12 +67,16 @@ private:
 
     // CUDA objects
     cudaStream_t stream_;
-    void** device_buffers_;
-    void** host_buffers_;
 
-    // Model info
-    int input_binding_;
-    int output_binding_;
+    // Modern TensorRT API uses individual buffers instead of arrays
+    void* input_device_buffer_;
+    void* output_device_buffer_;
+    void* input_host_buffer_;
+    void* output_host_buffer_;
+
+    // Model info - using tensor names instead of binding indices
+    std::string input_tensor_name_;
+    std::string output_tensor_name_;
     size_t input_size_bytes_;
     size_t output_size_bytes_;
     nvinfer1::Dims input_dims_;
