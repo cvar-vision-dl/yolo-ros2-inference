@@ -455,6 +455,9 @@ class ModelAnalyzer:
                             return group
 
         return 'unknown'
+
+    @staticmethod
+    def _extract_variant_from_filename(filename: str) -> str:
         """Extract YOLO variant from filename patterns"""
         filename_lower = filename.lower()
 
@@ -695,7 +698,7 @@ class ModelAnalyzer:
 class ModelBenchmarkAnalyzer:
     """Main analyzer class with improved model processing"""
 
-    def __init__(self, model_folders: List[str], dataset_yaml: str, output_dir: str,
+    def __init__(self, model_folders: List[str], output_dir: str,
                  task: str = 'pose', device: int = 0, timing_runs: int = 100,
                  warmup_runs: int = 10, recursive: bool = False,
                  # TensorRT options (FP32/FP16 only)
@@ -705,7 +708,6 @@ class ModelBenchmarkAnalyzer:
                  convert_only: bool = False):
 
         self.model_folders = model_folders
-        self.dataset_yaml = dataset_yaml
         self.output_dir = output_dir
         self.task = task.lower()
         self.device = device
@@ -768,9 +770,6 @@ class ModelBenchmarkAnalyzer:
             if not os.path.exists(folder):
                 raise FileNotFoundError(f"Model folder {i + 1} not found: {folder}")
             print(f"✓ Model folder {i + 1}: {folder}")
-
-        if not os.path.exists(self.dataset_yaml):
-            raise FileNotFoundError(f"Dataset YAML not found: {self.dataset_yaml}")
 
         print("✓ All inputs validated")
         print(f"✓ Output directory: {self.output_dir}")
@@ -1043,8 +1042,6 @@ def main():
 
     parser.add_argument('--model-folders', required=True, nargs='+',
                         help='Folders containing .pt model files')
-    parser.add_argument('--dataset-yaml', required=True,
-                        help='Path to validation dataset YAML file')
     parser.add_argument('--output-dir', required=True,
                         help='Output directory for processed models and reports')
     parser.add_argument('--task', choices=['pose', 'detect', 'segment'], default='pose',
@@ -1083,7 +1080,6 @@ def main():
     try:
         analyzer = ModelBenchmarkAnalyzer(
             model_folders=args.model_folders,
-            dataset_yaml=args.dataset_yaml,
             output_dir=args.output_dir,
             task=args.task,
             device=args.device,
