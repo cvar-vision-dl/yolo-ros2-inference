@@ -111,6 +111,39 @@ ros2 launch yolo_inference_cpp yolo_pose.launch.py \
     confidence_threshold:=0.5
 ```
 
+### Batch Export to ONNX and TensorRT
+```
+python scripts/yolo_batch_exporter_validator.py --model-folders
+<folder_1> <folder_2> ...
+--dataset-yaml
+<path_to_validation_dataset_yolo>/dataset.yaml
+--output-dir
+<output_dir>
+--task
+pose
+--trtexec-path
+/usr/src/tensorrt/bin/trtexec
+--tensorrt-precision
+all
+--use-tensorrt
+```
+
+### Benchmark all models FPS vs Accuracy Plot
+```
+python scripts/yolo_benchmarking.py --models-folder
+<path_to_all_models_to_compare>
+--dataset-yaml
+<path_to_validation_dataset_yolo>/dataset.yaml
+--output-dir
+<output_dir>
+--task
+pose
+--timing-runs
+100
+--warmup-runs
+10
+```
+
 ## Configuration
 
 ### Launch Parameters
