@@ -120,6 +120,7 @@ endif()
 # Create the main executable
 add_executable(yolo_inference_node
   src/yolo_inference_node.cpp
+  src/yolo_inference.cpp
   src/inference_backend.cpp
   src/tensorrt_backend.cpp
   src/onnx_backend.cpp
