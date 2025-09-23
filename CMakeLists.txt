@@ -101,6 +101,9 @@ if(TENSORRT_INCLUDE_DIR AND TENSORRT_LIBRARY)
   include_directories(${TENSORRT_INCLUDE_DIR})
   list(APPEND LINK_LIBRARIES ${TENSORRT_LIBRARY} ${TENSORRT_PLUGIN_LIBRARY})
 else()
+#include <chrono>
+#include <memory>
+#include <string>
   message(WARNING "TensorRT not found. TensorRT support will be disabled.")
 endif()
 
@@ -161,6 +164,12 @@ install(DIRECTORY config/
 # Testing
 if(BUILD_TESTING)
   find_package(ament_lint_auto REQUIRED)
+  file(GLOB_RECURSE EXCLUDE_FILES
+    build/*
+    install/*
+    scripts/*
+  )
+  set(AMENT_LINT_AUTO_FILE_EXCLUDE ${EXCLUDE_FILES})
   ament_lint_auto_find_test_dependencies()
 endif()
 
