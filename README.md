@@ -101,10 +101,11 @@ python3 tests/test_inference.py
 ```bash
 ros2 launch yolo_inference_cpp yolo_pose.launch.py \
     model_path:=models/yolo11n-pose.onnx \
-    confidence_threshold:=0.5 \
+    confidence_threshold:=0.1 \
     keypoint_threshold:=0.3 \
     publish_visualization:=true \
-    input_topic:=/camera/image_raw/compressed
+    input_topic:=/camera/image_raw/compressed \
+    input_size:=640
 ```
 
 ### High-Performance Drone Configuration
@@ -112,10 +113,12 @@ ros2 launch yolo_inference_cpp yolo_pose.launch.py \
 ```bash
 ros2 launch yolo_inference_cpp yolo_tensorrt.launch.py \
     model_path:=models/yolo11m-pose-jetson-fp16.engine \
-    confidence_threshold:=0.7 \
-    max_detections:=5 \
+    confidence_threshold:=0.1 \
+    keypoint_threshold:=0.3 \
+    max_detections:=7 \
     publish_visualization:=false \
-    enable_profiling:=true
+    enable_profiling:=true \
+    input_size:=640
 ```
 
 ### Multi-Model Detection
