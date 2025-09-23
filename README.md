@@ -71,6 +71,8 @@ pose
 10
 ```
 
+After execution, feel free to open the generated `.html` files to visualize interactively every model performance.
+
 ### 3. Launch the Node
 
 ```bash
