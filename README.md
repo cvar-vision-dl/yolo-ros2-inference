@@ -4,7 +4,7 @@ High-performance YOLO inference implementation in C++ for ROS2, optimized for dr
 
 ## Features
 
-- **🚀 High Performance**: Optimized for real-time inference on drones and edge devices
+- **🚀 High Performance**: Optimized for real-time inference on edge devices
 - **🔧 Dual Backend Support**: TensorRT (best performance) and ONNX Runtime (cross-platform)
 - **📊 Comprehensive Profiling**: Detailed timing analysis for all processing stages
 - **🎯 Multiple Tasks**: Pose detection, object detection, and segmentation support
