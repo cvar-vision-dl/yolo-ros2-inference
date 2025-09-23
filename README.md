@@ -40,7 +40,7 @@ chmod +x scripts/build_package.sh
 
 Convert your YOLO model to the appropriate format:
 
-*Batch Export to ONNX and TensorRT*
+**Batch Export to ONNX and TensorRT**
 ```
 python scripts/yolo_batch_exporter_validator.py --model-folders
 <folder_1> <folder_2> ...
@@ -55,7 +55,7 @@ all
 --use-tensorrt
 ```
 
-*Benchmark all models FPS vs Accuracy Plot [optional]*
+**Benchmark all models FPS vs Accuracy Plot [optional]**
 ```
 python scripts/yolo_benchmarking.py --models-folder
 <path_to_all_models_to_compare>
