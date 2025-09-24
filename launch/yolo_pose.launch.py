@@ -42,7 +42,7 @@ def generate_launch_description():
     # Declare launch arguments
     model_path_arg = DeclareLaunchArgument(
         'model_path',
-        default_value='/home/rafa/yolo_ws/src/yolo-ros2-inference/.vscode/yolop_x_img640.onnx',
+        default_value='yolo11n-pose.onnx',
         description='Path to YOLO model file (.onnx or .engine)'
     )
 
@@ -84,7 +84,7 @@ def generate_launch_description():
 
     input_topic_arg = DeclareLaunchArgument(
         'input_topic',
-        default_value='/drone0/sensor_measurements/camera/image/compressed',
+        default_value='/camera/image_raw/compressed',
         description='Input compressed image topic'
     )
 
