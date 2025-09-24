@@ -249,33 +249,30 @@ void TensorRTBackend::deallocateBuffers()
   }
 }
 
-InferenceResult TensorRTBackend::infer(
-  const cv::Mat & image,
-  float conf_threshold,
-  float nms_threshold,
-  float keypoint_threshold)
-{
-  std::cout << "TensorRT DEBUG: Starting inference..." << std::endl;
-  InferenceResult result;
-  result.original_size = image.size();
-  result.input_size = cv::Size(input_size_, input_size_);
+InferenceResult TensorRTBackend::infer(const cv::Mat& image,
+                                     float conf_threshold,
+                                     float nms_threshold,
+                                     float keypoint_threshold) {
+    // std::cout << "TensorRT DEBUG: Starting inference..." << std::endl;
+    InferenceResult result;
+    result.original_size = image.size();
+    result.input_size = cv::Size(input_size_, input_size_);
 
   auto start_time = std::chrono::high_resolution_clock::now();
 
-  std::cout << "TensorRT DEBUG: Starting preprocessing..." << std::endl;
-  // Preprocess image
-  Preprocessor preprocessor;
-  cv::Mat processed = preprocessor.preprocess(image, input_size_);
+    // std::cout << "TensorRT DEBUG: Starting preprocessing..." << std::endl;
+    // Preprocess image
+    Preprocessor preprocessor;
+    cv::Mat processed = preprocessor.preprocess(image, input_size_);
 
   // Store preprocessing info for coordinate transformation
   cv::Size2f scale_factors = preprocessor.getScaleFactors();
   cv::Point2f padding = preprocessor.getPadding();
 
-  std::cout << "TensorRT DEBUG: Preprocessing completed, processed size: "
-            << processed.rows << "x" << processed.cols << std::endl;
-  std::cout << "TensorRT DEBUG: Scale factors: " << scale_factors.width << ", " <<
-    scale_factors.height << std::endl;
-  std::cout << "TensorRT DEBUG: Padding: " << padding.x << ", " << padding.y << std::endl;
+//    std::cout << "TensorRT DEBUG: Preprocessing completed, processed size: "
+//              << processed.rows << "x" << processed.cols << std::endl;
+//    std::cout << "TensorRT DEBUG: Scale factors: " << scale_factors.width << ", " << scale_factors.height << std::endl;
+//    std::cout << "TensorRT DEBUG: Padding: " << padding.x << ", " << padding.y << std::endl;
 
   // Copy data to host buffer
   float * input_host = static_cast<float *>(input_host_buffer_);
@@ -293,8 +290,54 @@ InferenceResult TensorRTBackend::infer(
   context_->setTensorAddress(input_tensor_name_.c_str(), input_device_buffer_);
   context_->setTensorAddress(output_tensor_name_.c_str(), output_device_buffer_);
 
-  // Create bindings array for executeV2 (still needed even with modern API)
-  std::vector<void *> bindings = {input_device_buffer_, output_device_buffer_};
+    // Create bindings array for executeV2 (still needed even with modern API)
+    std::vector<void*> bindings = {input_device_buffer_, output_device_buffer_};
+
+    // Run inference using modern API
+//    std::cout << "TensorRT DEBUG: About to execute inference..." << std::endl;
+    bool status = context_->executeV2(bindings.data());
+    if (!status) {
+        std::cerr << "TensorRT inference execution failed" << std::endl;
+        return result;
+    }
+
+    // Copy output from device to host
+    cudaMemcpyAsync(output_host_buffer_,
+                   output_device_buffer_,
+                   output_size_bytes_,
+                   cudaMemcpyDeviceToHost,
+                   stream_);
+
+    // Synchronize
+    cudaStreamSynchronize(stream_);
+
+    auto end_time = std::chrono::high_resolution_clock::now();
+    result.inference_time_ms = std::chrono::duration<double, std::milli>(
+        end_time - start_time).count();
+
+//    std::cout << "TensorRT DEBUG: Inference completed!" << std::endl;
+
+    // Post-process results
+    float* output_host = static_cast<float*>(output_host_buffer_);
+
+    if (task_type_ == TaskType::POSE) {
+        result.detections = postProcessPose(output_host,
+                                          result.input_size,
+                                          result.original_size,
+                                          scale_factors,
+                                          padding,
+                                          conf_threshold,
+                                          nms_threshold,
+                                          keypoint_threshold);
+    } else {
+        result.detections = postProcessDetection(output_host,
+                                               result.input_size,
+                                               result.original_size,
+                                               scale_factors,
+                                               padding,
+                                               conf_threshold,
+                                               nms_threshold);
+    }
 
   // Run inference using modern API
   std::cout << "TensorRT DEBUG: About to execute inference..." << std::endl;
@@ -360,13 +403,13 @@ std::vector<Detection> TensorRTBackend::postProcessPose(
 {
   std::vector<Detection> detections;
 
-  std::cout << "TensorRT DEBUG: Output dims: " << output_dims_.nbDims << " [";
-  for (int i = 0; i < output_dims_.nbDims; ++i) {
-    std::cout << output_dims_.d[i];
-    if (i < output_dims_.nbDims - 1) {std::cout << ", ";}
-  }
-  std::cout << "]" << std::endl;
-  std::cout << "TensorRT DEBUG: Confidence threshold: " << conf_threshold << std::endl;
+//    std::cout << "TensorRT DEBUG: Output dims: " << output_dims_.nbDims << " [";
+    for (int i = 0; i < output_dims_.nbDims; ++i) {
+        std::cout << output_dims_.d[i];
+        if (i < output_dims_.nbDims - 1) std::cout << ", ";
+    }
+    std::cout << "]" << std::endl;
+//    std::cout << "TensorRT DEBUG: Confidence threshold: " << conf_threshold << std::endl;
 
   if (output_dims_.nbDims != 3) {
     std::cerr << "Unexpected output shape dimensions: " << output_dims_.nbDims << std::endl;
@@ -381,148 +424,173 @@ std::vector<Detection> TensorRTBackend::postProcessPose(
   int64_t num_anchors, features;
   bool transposed = false;
 
-  if (dim1 == 29 && dim2 > 1000) {
-    // Format: [1, 29, 8400]
-    features = dim1;
-    num_anchors = dim2;
-    transposed = true;
-    std::cout << "TensorRT DEBUG: Detected transposed format [1, 29, " << num_anchors << "]" <<
-      std::endl;
-  } else if (dim2 == 29 && dim1 > 1000) {
-    // Format: [1, 8400, 29]
-    num_anchors = dim1;
-    features = dim2;
-    transposed = false;
-    std::cout << "TensorRT DEBUG: Detected standard format [1, " << num_anchors << ", 29]" <<
-      std::endl;
-  } else {
-    std::cerr << "TensorRT DEBUG: Unexpected dimensions - dim1: " << dim1 << ", dim2: " << dim2 <<
-      std::endl;
-    // Try to guess based on which dimension is larger
-    if (dim1 > dim2) {
-      num_anchors = dim1;
-      features = dim2;
-      transposed = false;
+    if (dim1 == 29 && dim2 > 1000) {
+        // Format: [1, 29, 8400]
+        features = dim1;
+        num_anchors = dim2;
+        transposed = true;
+//        std::cout << "TensorRT DEBUG: Detected transposed format [1, 29, " << num_anchors << "]" << std::endl;
+    } else if (dim2 == 29 && dim1 > 1000) {
+        // Format: [1, 8400, 29]
+        num_anchors = dim1;
+        features = dim2;
+        transposed = false;
+//        std::cout << "TensorRT DEBUG: Detected standard format [1, " << num_anchors << ", 29]" << std::endl;
     } else {
-      features = dim1;
-      num_anchors = dim2;
-      transposed = true;
-    }
-  }
-
-  int num_keypoints = (features - 5) / 3;
-  if (num_keypoints != 8) {
-    std::cout << "TensorRT DEBUG: Warning - expected 8 keypoints, got " << num_keypoints <<
-      std::endl;
-  }
-
-  // Calculate proper coordinate transformation parameters
-  float scale = scale_factors.width;   // Both width and height should be the same
-  float pad_x = padding.x;
-  float pad_y = padding.y;
-
-  std::cout << "TensorRT DEBUG: Using scale factor: " << scale << std::endl;
-  std::cout << "TensorRT DEBUG: Using padding: (" << pad_x << ", " << pad_y << ")" << std::endl;
-
-  std::vector<cv::Rect2f> boxes;
-  std::vector<float> confidences;
-  std::vector<std::vector<cv::Point3f>> keypoints_list;
-
-  int valid_detections = 0;
-  int high_conf_detections = 0;
-
-  for (int64_t i = 0; i < num_anchors; ++i) {
-    float cx, cy, w, h, conf;
-
-    // Extract basic detection data based on tensor layout
-    if (transposed) {
-      // [features, anchors] layout
-      cx = output[0 * num_anchors + i];
-      cy = output[1 * num_anchors + i];
-      w = output[2 * num_anchors + i];
-      h = output[3 * num_anchors + i];
-      conf = output[4 * num_anchors + i];
-    } else {
-      // [anchors, features] layout
-      const float * anchor_data = output + i * features;
-      cx = anchor_data[0];
-      cy = anchor_data[1];
-      w = anchor_data[2];
-      h = anchor_data[3];
-      conf = anchor_data[4];
-    }
-
-    // Debug first few detections
-    if (i < 5) {
-      std::cout << "TensorRT DEBUG: Anchor " << i << " - conf: " << conf
-                << ", bbox: [" << cx << ", " << cy << ", " << w << ", " << h << "]" << std::endl;
-    }
-
-    if (conf > 0.01) {high_conf_detections++;}
-
-    if (conf >= conf_threshold) {
-      valid_detections++;
-
-      // Convert from preprocessed image coordinates to original image coordinates
-      // Same logic as ONNX backend
-      float cx_no_pad = cx - pad_x;
-      float cy_no_pad = cy - pad_y;
-      float w_no_pad = w;
-      float h_no_pad = h;
-
-      float cx_orig = cx_no_pad / scale;
-      float cy_orig = cy_no_pad / scale;
-      float w_orig = w_no_pad / scale;
-      float h_orig = h_no_pad / scale;
-
-      // Convert to corner format
-      float x1 = cx_orig - w_orig / 2;
-      float y1 = cy_orig - h_orig / 2;
-      float x2 = cx_orig + w_orig / 2;
-      float y2 = cy_orig + h_orig / 2;
-
-      // Sanity check bounds
-      if (x1 >= 0 && y1 >= 0 && x2 > x1 && y2 > y1 &&
-        x1 < original_size.width && y1 < original_size.height)
-      {
-        boxes.push_back(cv::Rect2f(x1, y1, x2 - x1, y2 - y1));
-        confidences.push_back(conf);
-
-        // Extract keypoints (8 keypoints for gate)
-        std::vector<cv::Point3f> kpts;
-        for (int k = 0; k < 8 && k < num_keypoints; ++k) {
-          float kx, ky, kconf;
-
-          if (transposed) {
-            kx = output[(5 + k * 3) * num_anchors + i];
-            ky = output[(5 + k * 3 + 1) * num_anchors + i];
-            kconf = output[(5 + k * 3 + 2) * num_anchors + i];
-          } else {
-            const float * anchor_data = output + i * features;
-            kx = anchor_data[5 + k * 3];
-            ky = anchor_data[5 + k * 3 + 1];
-            kconf = anchor_data[5 + k * 3 + 2];
-          }
-
-          // Apply the same coordinate transformation to keypoints
-          float kx_no_pad = kx - pad_x;
-          float ky_no_pad = ky - pad_y;
-          float kx_orig = kx_no_pad / scale;
-          float ky_orig = ky_no_pad / scale;
-
-          kpts.push_back(cv::Point3f(kx_orig, ky_orig, kconf));
+//        std::cerr << "TensorRT DEBUG: Unexpected dimensions - dim1: " << dim1 << ", dim2: " << dim2 << std::endl;
+        // Try to guess based on which dimension is larger
+        if (dim1 > dim2) {
+            num_anchors = dim1;
+            features = dim2;
+            transposed = false;
+        } else {
+            features = dim1;
+            num_anchors = dim2;
+            transposed = true;
         }
         keypoints_list.push_back(kpts);
       }
     }
   }
 
-  std::cout << "TensorRT DEBUG: Processed " << num_anchors << " anchors" << std::endl;
-  std::cout << "TensorRT DEBUG: Found " << high_conf_detections << " detections with conf > 0.01" <<
-    std::endl;
-  std::cout << "TensorRT DEBUG: Found " << valid_detections << " detections above threshold " <<
-    conf_threshold << std::endl;
-  std::cout << "TensorRT DEBUG: Valid boxes after bounds check: " << boxes.size() << std::endl;
+    int num_keypoints = (features - 5) / 3;
+    if (num_keypoints != 8) {
+//        std::cout << "TensorRT DEBUG: Warning - expected 8 keypoints, got " << num_keypoints << std::endl;
+    }
+
+    // Calculate proper coordinate transformation parameters
+    float scale = scale_factors.width; // Both width and height should be the same
+    float pad_x = padding.x;
+    float pad_y = padding.y;
+
+//    std::cout << "TensorRT DEBUG: Using scale factor: " << scale << std::endl;
+//    std::cout << "TensorRT DEBUG: Using padding: (" << pad_x << ", " << pad_y << ")" << std::endl;
+
+    std::vector<cv::Rect2f> boxes;
+    std::vector<float> confidences;
+    std::vector<std::vector<cv::Point3f>> keypoints_list;
+
+    int valid_detections = 0;
+    int high_conf_detections = 0;
+
+    for (int64_t i = 0; i < num_anchors; ++i) {
+        float cx, cy, w, h, conf;
+
+        // Extract basic detection data based on tensor layout
+        if (transposed) {
+            // [features, anchors] layout
+            cx = output[0 * num_anchors + i];
+            cy = output[1 * num_anchors + i];
+            w = output[2 * num_anchors + i];
+            h = output[3 * num_anchors + i];
+            conf = output[4 * num_anchors + i];
+        } else {
+            // [anchors, features] layout
+            const float* anchor_data = output + i * features;
+            cx = anchor_data[0];
+            cy = anchor_data[1];
+            w = anchor_data[2];
+            h = anchor_data[3];
+            conf = anchor_data[4];
+        }
+
+        // Debug first few detections
+//        if (i < 5) {
+//            std::cout << "TensorRT DEBUG: Anchor " << i << " - conf: " << conf
+//                      << ", bbox: [" << cx << ", " << cy << ", " << w << ", " << h << "]" << std::endl;
+//        }
+
+        if (conf > 0.01) high_conf_detections++;
+
+        if (conf >= conf_threshold) {
+            valid_detections++;
+
+            // Convert from preprocessed image coordinates to original image coordinates
+            // Same logic as ONNX backend
+            float cx_no_pad = cx - pad_x;
+            float cy_no_pad = cy - pad_y;
+            float w_no_pad = w;
+            float h_no_pad = h;
+
+            float cx_orig = cx_no_pad / scale;
+            float cy_orig = cy_no_pad / scale;
+            float w_orig = w_no_pad / scale;
+            float h_orig = h_no_pad / scale;
+
+            // Convert to corner format
+            float x1 = cx_orig - w_orig/2;
+            float y1 = cy_orig - h_orig/2;
+            float x2 = cx_orig + w_orig/2;
+            float y2 = cy_orig + h_orig/2;
+
+            // Sanity check bounds
+            if (x1 >= 0 && y1 >= 0 && x2 > x1 && y2 > y1 &&
+                x1 < original_size.width && y1 < original_size.height) {
+
+                boxes.push_back(cv::Rect2f(x1, y1, x2-x1, y2-y1));
+                confidences.push_back(conf);
+
+                // Extract keypoints (8 keypoints for gate)
+                std::vector<cv::Point3f> kpts;
+                for (int k = 0; k < 8 && k < num_keypoints; ++k) {
+                    float kx, ky, kconf;
+
+                    if (transposed) {
+                        kx = output[(5 + k*3) * num_anchors + i];
+                        ky = output[(5 + k*3 + 1) * num_anchors + i];
+                        kconf = output[(5 + k*3 + 2) * num_anchors + i];
+                    } else {
+                        const float* anchor_data = output + i * features;
+                        kx = anchor_data[5 + k*3];
+                        ky = anchor_data[5 + k*3 + 1];
+                        kconf = anchor_data[5 + k*3 + 2];
+                    }
+
+                    // Apply the same coordinate transformation to keypoints
+                    float kx_no_pad = kx - pad_x;
+                    float ky_no_pad = ky - pad_y;
+                    float kx_orig = kx_no_pad / scale;
+                    float ky_orig = ky_no_pad / scale;
+
+                    kpts.push_back(cv::Point3f(kx_orig, ky_orig, kconf));
+                }
+                keypoints_list.push_back(kpts);
+            }
+        }
+    }
+
+//    std::cout << "TensorRT DEBUG: Processed " << num_anchors << " anchors" << std::endl;
+//    std::cout << "TensorRT DEBUG: Found " << high_conf_detections << " detections with conf > 0.01" << std::endl;
+//    std::cout << "TensorRT DEBUG: Found " << valid_detections << " detections above threshold " << conf_threshold << std::endl;
+//    std::cout << "TensorRT DEBUG: Valid boxes after bounds check: " << boxes.size() << std::endl;
+
+    if (boxes.empty()) {
+//        std::cout << "TensorRT DEBUG: No valid detections found" << std::endl;
+        return detections;
+    }
+
+    // Convert cv::Rect2f to cv::Rect for NMS
+    std::vector<cv::Rect> int_boxes;
+    for (const auto& box : boxes) {
+        int_boxes.push_back(cv::Rect(static_cast<int>(box.x), static_cast<int>(box.y),
+                                    static_cast<int>(box.width), static_cast<int>(box.height)));
+    }
+
+    // Apply NMS
+    std::vector<int> indices;
+    cv::dnn::NMSBoxes(int_boxes, confidences, conf_threshold, nms_threshold, indices);
+
+//    std::cout << "TensorRT DEBUG: " << indices.size() << " detections after NMS" << std::endl;
+
+    for (int idx : indices) {
+        Detection det;
+        det.bbox = boxes[idx];
+        det.confidence = confidences[idx];
+        det.class_id = 0; // Gate class
+        det.keypoints = keypoints_list[idx];
+
+        detections.push_back(det);
+    }
 
   if (boxes.empty()) {
     std::cout << "TensorRT DEBUG: No valid detections found" << std::endl;
