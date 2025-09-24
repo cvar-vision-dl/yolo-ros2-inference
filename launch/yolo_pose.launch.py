@@ -42,7 +42,7 @@ def generate_launch_description():
     # Declare launch arguments
     model_path_arg = DeclareLaunchArgument(
         'model_path',
-        default_value='yolo11n-pose.onnx',
+        default_value='/home/rafa/yolo_ws/src/yolo-ros2-inference/.vscode/yolop_x_img640.onnx',
         description='Path to YOLO model file (.onnx or .engine)'
     )
 
@@ -84,14 +84,14 @@ def generate_launch_description():
 
     input_topic_arg = DeclareLaunchArgument(
         'input_topic',
-        default_value='/camera/image_raw/compressed',
+        default_value='/drone0/sensor_measurements/camera/image/compressed',
         description='Input compressed image topic'
     )
 
     # YOLO inference node
     yolo_node = Node(
         package='yolo_inference_cpp',
-        executable='yolo_inference_node',
+        executable='yolo_inference_cpp_node',
         name='yolo_inference_node',
         parameters=[{
             'model_path': LaunchConfiguration('model_path'),
