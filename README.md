@@ -4,7 +4,7 @@ High-performance YOLO inference implementation in C++ for ROS2, optimized for dr
 
 ## Features
 
-- **🚀 High Performance**: Optimized for real-time inference on drones and edge devices
+- **🚀 High Performance**: Optimized for real-time inference on edge devices
 - **🔧 Dual Backend Support**: TensorRT (best performance) and ONNX Runtime (cross-platform)
 - **📊 Comprehensive Profiling**: Detailed timing analysis for all processing stages
 - **🎯 Multiple Tasks**: Pose detection, object detection, and segmentation support
@@ -40,7 +40,7 @@ chmod +x scripts/build_package.sh
 
 Convert your YOLO model to the appropriate format:
 
-*Batch Export to ONNX and TensorRT*
+**Batch Export to ONNX and TensorRT**
 ```
 python scripts/yolo_batch_exporter_validator.py --model-folders
 <folder_1> <folder_2> ...
@@ -55,7 +55,7 @@ all
 --use-tensorrt
 ```
 
-*Benchmark all models FPS vs Accuracy Plot [optional]*
+**Benchmark all models FPS vs Accuracy Plot [optional]**
 ```
 python scripts/yolo_benchmarking.py --models-folder
 <path_to_all_models_to_compare>
@@ -70,6 +70,8 @@ pose
 --warmup-runs
 10
 ```
+
+After execution, feel free to open the generated `.html` files to visualize interactively every model performance.
 
 ### 3. Launch the Node
 
