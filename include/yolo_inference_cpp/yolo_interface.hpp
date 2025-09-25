@@ -67,7 +67,7 @@ public:
   rclcpp::Logger get_logger() const {return node_ptr_->get_logger();}
 
   // Public method to process images (moved from private callback)
-  void processImage(const sensor_msgs::msg::CompressedImage::SharedPtr msg);
+  InferenceResult processImage(const sensor_msgs::msg::CompressedImage::SharedPtr msg);
 
   // Public methods to create messages without publishing
   yolo_inference_cpp::msg::KeypointDetectionArray createDetectionsMessage(
