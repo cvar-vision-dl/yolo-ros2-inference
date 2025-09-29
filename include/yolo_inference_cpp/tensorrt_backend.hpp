@@ -26,15 +26,12 @@
 // ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
 // POSSIBILITY OF SUCH DAMAGE.
 
-
 #pragma once
 #ifdef HAVE_TENSORRT
 #include <NvInfer.h>
 #include <cuda_runtime.h>
 
 #include <memory>
-#include <string>
-#include <vector>
 
 #include "inference_backend.hpp"
 
@@ -127,6 +124,6 @@ private:
   std::vector<std::string> keypoint_names_;
 };
 
-}  // namespace yolo_inference
+} // namespace yolo_inference
 
-#endif  // HAVE_TENSORRT
+#endif // HAVE_TENSORRT
