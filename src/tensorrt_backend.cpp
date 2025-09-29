@@ -57,6 +57,7 @@ TensorRTBackend::TensorRTBackend()
   , input_size_bytes_(0)
   , output_size_bytes_(0)
 {
+
   logger_ = std::make_unique<TensorRTLogger>();
 }
 
