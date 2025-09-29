@@ -1,8 +1,36 @@
 #!/usr/bin/env python3
-"""
-Improved Model Performance and Speed Benchmark Analyzer
-Loads all models in a folder, extracts model architecture details,
-exports to ONNX and TensorRT with comprehensive naming scheme.
+
+# Copyright 2025 Universidad Politécnica de Madrid
+#
+# Redistribution and use in source and binary forms, with or without
+# modification, are permitted provided that the following conditions are met:
+#
+#    * Redistributions of source code must retain the above copyright
+#      notice, this list of conditions and the following disclaimer.
+#
+#    * Redistributions in binary form must reproduce the above copyright
+#      notice, this list of conditions and the following disclaimer in the
+#      documentation and/or other materials provided with the distribution.
+#
+#    * Neither the name of the Universidad Politécnica de Madrid nor the names of its
+#      contributors may be used to endorse or promote products derived from
+#      this software without specific prior written permission.
+#
+# THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
+# AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+# IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
+# ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE
+# LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR
+# CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF
+# SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS
+# INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN
+# CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
+# ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
+# POSSIBILITY OF SUCH DAMAGE.
+"""Improved Model Performance and Speed Benchmark Analyzer Loads all models in
+a folder, extracts model architecture details, exports to ONNX and TensorRT
+with comprehensive naming scheme.
+
 Supports both trtexec (default) and Python TensorRT as fallback.
 """
 
@@ -38,7 +66,8 @@ except ImportError as e:
 
 
 class TensorRTConverter:
-    """Handles TensorRT conversion using system trtexec or Python TensorRT (FP32/FP16 only)"""
+    """Handles TensorRT conversion using system trtexec or Python TensorRT
+    (FP32/FP16 only)"""
 
     def __init__(self, trtexec_path: str = "/usr/src/tensorrt/bin/trtexec",
                  use_python_trt: bool = False, device: int = 0, verbose: bool = True):
@@ -52,7 +81,7 @@ class TensorRTConverter:
         self._check_availability()
 
     def _check_availability(self):
-        """Check availability of TensorRT conversion methods"""
+        """Check availability of TensorRT conversion methods."""
         # Check trtexec
         if not self.use_python_trt:
             if shutil.which(self.trtexec_path) or os.path.exists(self.trtexec_path):
@@ -256,7 +285,8 @@ class TensorRTConverter:
 
     def _convert_with_python_trt(self, onnx_path: str, engine_path: str, precision: str,
                                  max_workspace_size: int, original_pt_path: str = None) -> str:
-        """Convert using YOLO ultralytics export instead of manual TensorRT (FP32/FP16 only)"""
+        """Convert using YOLO ultralytics export instead of manual TensorRT
+        (FP32/FP16 only)"""
 
         # Determine the original PT file path
         if original_pt_path and os.path.exists(original_pt_path):
@@ -347,11 +377,12 @@ class TensorRTConverter:
 
 
 class ModelAnalyzer:
-    """Analyzes YOLO models to extract architecture and configuration details"""
+    """Analyzes YOLO models to extract architecture and configuration
+    details."""
 
     @staticmethod
     def extract_model_info(model_path: str) -> Dict[str, Any]:
-        """Extract comprehensive model information from YOLO model"""
+        """Extract comprehensive model information from YOLO model."""
         try:
             # Load model temporarily to extract info
             model = YOLO(model_path)
@@ -389,7 +420,7 @@ class ModelAnalyzer:
 
     @staticmethod
     def _detect_variant_comprehensive(model, filename: str, folder_path: str) -> str:
-        """Detect YOLO variant from folder path and filename"""
+        """Detect YOLO variant from folder path and filename."""
 
         # Method 1: Extract from folder path (most reliable for organized datasets)
         variant_from_folder = ModelAnalyzer._extract_variant_from_folder(folder_path)
@@ -414,7 +445,7 @@ class ModelAnalyzer:
 
     @staticmethod
     def _extract_variant_from_folder(folder_path: str) -> str:
-        """Extract YOLO variant from the entire absolute path"""
+        """Extract YOLO variant from the entire absolute path."""
         # Use the full absolute path to search for variant indicators
         full_path_lower = os.path.abspath(folder_path).lower()
 
@@ -458,7 +489,7 @@ class ModelAnalyzer:
 
     @staticmethod
     def _extract_variant_from_filename(filename: str) -> str:
-        """Extract YOLO variant from filename patterns"""
+        """Extract YOLO variant from filename patterns."""
         filename_lower = filename.lower()
 
         # Common patterns: yolov8n, yolo11s, yolov5m, etc.
@@ -494,7 +525,7 @@ class ModelAnalyzer:
 
     @staticmethod
     def _extract_variant_from_yaml(model) -> str:
-        """Extract variant from model YAML configuration"""
+        """Extract variant from model YAML configuration."""
         try:
             if hasattr(model.model, 'yaml') and isinstance(model.model.yaml, dict):
                 yaml_config = model.model.yaml
@@ -526,7 +557,7 @@ class ModelAnalyzer:
 
     @staticmethod
     def _infer_from_backbone_channels(backbone) -> str:
-        """Infer variant from backbone channel configurations"""
+        """Infer variant from backbone channel configurations."""
         try:
             # Look for Conv layers with specific channel patterns
             max_channels = 0
@@ -564,7 +595,8 @@ class ModelAnalyzer:
 
     @staticmethod
     def _infer_variant_from_parameters_precise(model) -> str:
-        """Infer variant from precise parameter count with updated thresholds"""
+        """Infer variant from precise parameter count with updated
+        thresholds."""
         try:
             param_count = sum(p.numel() for p in model.parameters())
 
@@ -594,7 +626,7 @@ class ModelAnalyzer:
 
     @staticmethod
     def _analyze_model_architecture(model) -> str:
-        """Analyze model architecture for variant clues"""
+        """Analyze model architecture for variant clues."""
         try:
             # Count different types of layers
             conv_layers = 0
@@ -639,7 +671,7 @@ class ModelAnalyzer:
 
     @staticmethod
     def extract_resolution_from_filename(filename: str) -> Optional[int]:
-        """Extract image resolution from filename"""
+        """Extract image resolution from filename."""
         # Look for patterns like img640, 640p, size640, etc.
         patterns = [
             r'img(\d+)',
@@ -663,7 +695,7 @@ class ModelAnalyzer:
     @staticmethod
     def generate_comprehensive_name(original_name: str, model_info: Dict, resolution: int,
                                     format_ext: str, precision: str = None) -> str:
-        """Generate comprehensive model name based on all available info"""
+        """Generate comprehensive model name based on all available info."""
         parts = []
 
         # Add task if available
@@ -696,7 +728,7 @@ class ModelAnalyzer:
 
 
 class ModelBenchmarkAnalyzer:
-    """Main analyzer class with improved model processing"""
+    """Main analyzer class with improved model processing."""
 
     def __init__(self, model_folders: List[str], output_dir: str,
                  task: str = 'pose', device: int = 0, timing_runs: int = 100,
@@ -765,7 +797,7 @@ class ModelBenchmarkAnalyzer:
         sns.set_palette("husl")
 
     def _validate_inputs(self):
-        """Validate all input paths"""
+        """Validate all input paths."""
         for i, folder in enumerate(self.model_folders):
             if not os.path.exists(folder):
                 raise FileNotFoundError(f"Model folder {i + 1} not found: {folder}")
@@ -777,7 +809,8 @@ class ModelBenchmarkAnalyzer:
         print(f"✓ Device: {self.device}")
 
     def find_and_process_models(self) -> List[Dict[str, Any]]:
-        """Find all .pt models and process them through the conversion pipeline"""
+        """Find all .pt models and process them through the conversion
+        pipeline."""
         model_files = []
 
         # Find all .pt files
@@ -837,7 +870,7 @@ class ModelBenchmarkAnalyzer:
         return all_generated_files
 
     def _process_model_pipeline(self, model_record: Dict) -> List[Dict[str, Any]]:
-        """Process a single model through the complete pipeline"""
+        """Process a single model through the complete pipeline."""
         generated_files = []
 
         # Step 1: Copy original .pt file with new naming
@@ -858,7 +891,7 @@ class ModelBenchmarkAnalyzer:
         return generated_files
 
     def _copy_with_comprehensive_naming(self, model_record: Dict, extension: str) -> Optional[Dict]:
-        """Copy file with comprehensive naming scheme"""
+        """Copy file with comprehensive naming scheme."""
         try:
             new_name = ModelAnalyzer.generate_comprehensive_name(
                 model_record['original_name'],
@@ -899,7 +932,7 @@ class ModelBenchmarkAnalyzer:
             return None
 
     def _export_to_onnx(self, model_record: Dict) -> Optional[Dict]:
-        """Export PyTorch model to ONNX"""
+        """Export PyTorch model to ONNX."""
         try:
             print(f"  📦 Exporting to ONNX...")
 
@@ -956,7 +989,7 @@ class ModelBenchmarkAnalyzer:
             return None
 
     def _convert_to_tensorrt(self, onnx_record: Dict) -> List[Dict]:
-        """Convert ONNX to TensorRT engines for all target precisions"""
+        """Convert ONNX to TensorRT engines for all target precisions."""
         trt_files = []
 
         for precision in self.target_precisions:
@@ -1010,7 +1043,7 @@ class ModelBenchmarkAnalyzer:
         return trt_files
 
     def analyze_models(self) -> List[Dict[str, Any]]:
-        """Main analysis pipeline"""
+        """Main analysis pipeline."""
         # Find and process all models
         model_files = self.find_and_process_models()
 

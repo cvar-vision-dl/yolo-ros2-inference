@@ -1,4 +1,32 @@
 #!/usr/bin/env python3
+
+# Copyright 2025 Universidad Politécnica de Madrid
+#
+# Redistribution and use in source and binary forms, with or without
+# modification, are permitted provided that the following conditions are met:
+#
+#    * Redistributions of source code must retain the above copyright
+#      notice, this list of conditions and the following disclaimer.
+#
+#    * Redistributions in binary form must reproduce the above copyright
+#      notice, this list of conditions and the following disclaimer in the
+#      documentation and/or other materials provided with the distribution.
+#
+#    * Neither the name of the Universidad Politécnica de Madrid nor the names of its
+#      contributors may be used to endorse or promote products derived from
+#      this software without specific prior written permission.
+#
+# THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
+# AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+# IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
+# ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE
+# LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR
+# CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF
+# SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS
+# INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN
+# CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
+# ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
+# POSSIBILITY OF SUCH DAMAGE.
 """
 Enhanced Model Performance and Speed Benchmark Analyzer
 Loads all models in a folder, computes metrics and inference speed,
@@ -674,16 +702,16 @@ class OfflineModelAnalyzer:
 
     def run(self, host='127.0.0.1', port=8050, debug=False):
         """Run the Dash application"""
-        print(f"\nStarting Interactive Model Analyzer")
+        print("\nStarting Interactive Model Analyzer")
         print(f"Loaded {len(self.df)} models")
         print(f"Open your browser and go to: http://{host}:{port}")
-        print(f"Press Ctrl+C to stop the server\n")
+        print("Press Ctrl+C to stop the server\n")
 
         self.app.run_server(host=host, port=port, debug=debug)
 
 
 class ModelBenchmarkAnalyzer:
-    """Analyzes model performance metrics and inference speed"""
+    """Analyzes model performance metrics and inference speed."""
 
     def __init__(self,
                  models_folder: str,
@@ -718,7 +746,7 @@ class ModelBenchmarkAnalyzer:
         sns.set_palette("husl")
 
     def _validate_inputs(self):
-        """Validate all input paths exist"""
+        """Validate all input paths exist."""
         if not os.path.exists(self.models_folder):
             raise FileNotFoundError(f"Models folder not found: {self.models_folder}")
 
@@ -740,7 +768,7 @@ class ModelBenchmarkAnalyzer:
             return 640
 
     def find_model_files(self) -> List[Dict[str, Any]]:
-        """Find all model files in the specified folder"""
+        """Find all model files in the specified folder."""
         model_extensions = ['.pt', '.onnx', '.engine']
         model_files = []
 
@@ -768,7 +796,7 @@ class ModelBenchmarkAnalyzer:
         return sorted(model_files, key=lambda x: x['name'])
 
     def prepare_timing_images(self, num_images: int = 50) -> List[str]:
-        """Prepare a set of images for timing measurements"""
+        """Prepare a set of images for timing measurements."""
         print(f"\nPreparing {num_images} images for timing measurements...")
 
         try:
@@ -791,7 +819,7 @@ class ModelBenchmarkAnalyzer:
                         break
 
             if not val_images_path or not os.path.exists(val_images_path):
-                raise FileNotFoundError(f"Validation images path not found")
+                raise FileNotFoundError("Validation images path not found")
 
             # Find image files
             image_extensions = ['.jpg', '.jpeg', '.png', '.bmp', '.tiff']
@@ -820,8 +848,9 @@ class ModelBenchmarkAnalyzer:
             return self.timing_images
 
     def measure_inference_time(self, model, image_size: int = 640) -> float:
-        """Measure average inference time for a model (excludes model loading time)"""
-        print(f"  Measuring inference time...")
+        """Measure average inference time for a model (excludes model loading
+        time)"""
+        print("  Measuring inference time...")
 
         times = []
 
@@ -879,7 +908,7 @@ class ModelBenchmarkAnalyzer:
         return avg_time, std_time, times
 
     def validate_model(self, model_info: Dict[str, Any]) -> Dict[str, Any]:
-        """Validate model and collect metrics + timing"""
+        """Validate model and collect metrics + timing."""
         print(f"\n=== Analyzing {model_info['name']} ===")
         print(f"Path: {model_info['path']}")
         print(f"Size: {model_info['size_mb']} MB")
@@ -934,7 +963,7 @@ class ModelBenchmarkAnalyzer:
                         'precision': float(validation_results.pose.mp),
                         'recall': float(validation_results.pose.mr),
                     })
-                    print(f"  Using POSE metrics")
+                    print("  Using POSE metrics")
                 elif hasattr(validation_results, 'box') and validation_results.box is not None:
                     metrics.update({
                         'map50_95': float(validation_results.box.map),
@@ -942,7 +971,7 @@ class ModelBenchmarkAnalyzer:
                         'precision': float(validation_results.box.mp),
                         'recall': float(validation_results.box.mr),
                     })
-                    print(f"  Using BBOX metrics")
+                    print("  Using BBOX metrics")
                 else:
                     # Fallback
                     print(f"  Warning: Could not extract metrics for task '{self.task}'")
@@ -997,7 +1026,7 @@ class ModelBenchmarkAnalyzer:
                     if hasattr(predictor, 'context') and predictor.context is not None:
                         try:
                             del predictor.context
-                            print(f"    Deleted TensorRT Context")
+                            print("    Deleted TensorRT Context")
                         except:
                             pass
 
@@ -1005,7 +1034,7 @@ class ModelBenchmarkAnalyzer:
                     if hasattr(predictor, 'engine') and predictor.engine is not None:
                         try:
                             del predictor.engine
-                            print(f"    Deleted TensorRT Engine")
+                            print("    Deleted TensorRT Engine")
                         except:
                             pass
 
@@ -1013,7 +1042,7 @@ class ModelBenchmarkAnalyzer:
                     if hasattr(predictor, 'runtime') and predictor.runtime is not None:
                         try:
                             del predictor.runtime
-                            print(f"    Deleted TensorRT Runtime")
+                            print("    Deleted TensorRT Runtime")
                         except:
                             pass
 
@@ -1021,21 +1050,21 @@ class ModelBenchmarkAnalyzer:
                     if hasattr(predictor, 'logger') and predictor.logger is not None:
                         try:
                             del predictor.logger
-                            print(f"    Deleted TensorRT Logger")
+                            print("    Deleted TensorRT Logger")
                         except:
                             pass
 
                     # Delete predictor
                     try:
                         del model.predictor
-                        print(f"    Deleted Predictor")
+                        print("    Deleted Predictor")
                     except:
                         pass
 
                 # Delete the model itself
                 try:
                     del model
-                    print(f"    Deleted Model")
+                    print("    Deleted Model")
                 except:
                     pass
 
@@ -1049,12 +1078,12 @@ class ModelBenchmarkAnalyzer:
             if torch.cuda.is_available():
                 torch.cuda.empty_cache()
                 torch.cuda.synchronize()  # Wait for all operations to complete
-                print(f"  GPU memory cleaned and synchronized")
+                print("  GPU memory cleaned and synchronized")
 
         return result
 
     def analyze_all_models(self) -> List[Dict[str, Any]]:
-        """Analyze all models in the folder"""
+        """Analyze all models in the folder."""
         model_files = self.find_model_files()
 
         if not model_files:
@@ -1120,17 +1149,17 @@ class ModelBenchmarkAnalyzer:
         # 3. Enhanced static plots with reference guide
         visualizer.create_enhanced_static_plots(df, self.output_dir, self.task)
 
-        print(f"\nEnhanced visualizations complete!")
+        print("\nEnhanced visualizations complete!")
         print(f"  Interactive plots: {self.output_dir}/interactive_performance_analysis.html")
         print(f"  Main plot: {self.output_dir}/main_performance_plot.html")
         print(f"  Reference guide: {self.output_dir}/model_reference_guide.png")
         print(f"  Static plots: {self.output_dir}/enhanced_static_performance.png")
         print(
             f"\nSupports 1500+ unique color-shape combinations ({len(visualizer.colors)} colors × {len(visualizer.markers)} shapes)")
-        print(f"  Best for many models: Open the .html files in your browser for interactive exploration")
+        print("  Best for many models: Open the .html files in your browser for interactive exploration")
 
     def generate_report(self, output_file: str = None) -> Dict[str, Any]:
-        """Generate comprehensive performance report"""
+        """Generate comprehensive performance report."""
         if not self.results:
             print("No results to generate report from!")
             return {}
@@ -1197,7 +1226,7 @@ class ModelBenchmarkAnalyzer:
         return report
 
     def save_csv_summary(self, successful_results: List[Dict]):
-        """Save CSV summary of all results"""
+        """Save CSV summary of all results."""
         csv_file = os.path.join(self.output_dir, 'benchmark_summary.csv')
 
         try:
@@ -1235,7 +1264,7 @@ class ModelBenchmarkAnalyzer:
             print(f"Warning: Could not save CSV summary: {e}")
 
     def print_summary(self, report: Dict[str, Any]):
-        """Print summary to console"""
+        """Print summary to console."""
         print(f"\n{'=' * 80}")
         print("MODEL BENCHMARK ANALYSIS SUMMARY")
         print(f"{'=' * 80}")
@@ -1248,7 +1277,7 @@ class ModelBenchmarkAnalyzer:
         print(f"Timing runs per model: {info['timing_runs']}")
 
         if report['rankings']['best_accuracy']:
-            print(f"\nTOP 5 BY ACCURACY (mAP@0.5:0.95):")
+            print("\nTOP 5 BY ACCURACY (mAP@0.5:0.95):")
             print("-" * 115)
             print(
                 f"{'Rank':<4} {'Model':<25} {'Resolution':<10} {'Format':<8} {'mAP@0.5:0.95':<12} {'Time(ms)':<10} {'FPS':<8} {'Size(MB)':<10}")
@@ -1262,7 +1291,7 @@ class ModelBenchmarkAnalyzer:
                       f"{model['file_size_mb']:.1f}")
 
         if report['rankings']['fastest_models']:
-            print(f"\nTOP 5 FASTEST MODELS:")
+            print("\nTOP 5 FASTEST MODELS:")
             print("-" * 115)
             print(
                 f"{'Rank':<4} {'Model':<25} {'Resolution':<10} {'Format':<8} {'Time(ms)':<10} {'FPS':<8} {'mAP@0.5:0.95':<12} {'Size(MB)':<10}")
@@ -1276,7 +1305,7 @@ class ModelBenchmarkAnalyzer:
                       f"{model['file_size_mb']:.1f}")
 
         if report['rankings']['most_efficient']:
-            print(f"\nTOP 5 MOST EFFICIENT (Accuracy×Speed Score):")
+            print("\nTOP 5 MOST EFFICIENT (Accuracy×Speed Score):")
             print("-" * 125)
             print(
                 f"{'Rank':<4} {'Model':<25} {'Resolution':<10} {'Format':<8} {'Score':<8} {'mAP@0.5:0.95':<12} {'Time(ms)':<10} {'FPS':<8}")
@@ -1391,15 +1420,15 @@ def main():
         # Print summary
         analyzer.print_summary(report)
 
-        print(f"\nAnalysis completed!")
+        print("\nAnalysis completed!")
         print(f"Results saved to: {args.output_dir}")
-        print(f"Interactive visualizations: *.html files")
-        print(f"Static visualizations: *.png files")
-        print(f"Reports: benchmark_report.json, benchmark_summary.csv")
+        print("Interactive visualizations: *.html files")
+        print("Static visualizations: *.png files")
+        print("Reports: benchmark_report.json, benchmark_summary.csv")
 
         # Launch interactive analyzer if requested
         if args.interactive:
-            print(f"\nLaunching interactive analyzer...")
+            print("\nLaunching interactive analyzer...")
             analyzer.launch_interactive_analyzer(host=args.host, port=args.port)
 
     except KeyboardInterrupt:
