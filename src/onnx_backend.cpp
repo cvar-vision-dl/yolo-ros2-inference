@@ -153,7 +153,7 @@ InferenceResult ONNXBackend::infer(
   float nms_threshold,
   float keypoint_threshold)
 {
-  std::cout << "ONNX DEBUG: Starting inference..." << std::endl;
+  // std::cout << "ONNX DEBUG: Starting inference..." << std::endl;
   InferenceResult result;
   result.original_size = image.size();
   result.input_size = cv::Size(input_size_, input_size_);
@@ -161,7 +161,7 @@ InferenceResult ONNXBackend::infer(
   auto start_time = std::chrono::high_resolution_clock::now();
 
   try {
-    std::cout << "ONNX DEBUG: Starting preprocessing..." << std::endl;
+    // std::cout << "ONNX DEBUG: Starting preprocessing..." << std::endl;
     // Preprocess image
     Preprocessor preprocessor;
     cv::Mat processed = preprocessor.preprocess(image, input_size_);
@@ -170,30 +170,30 @@ InferenceResult ONNXBackend::infer(
     cv::Size2f scale_factors = preprocessor.getScaleFactors();
     cv::Point2f padding = preprocessor.getPadding();
 
-    std::cout << "ONNX DEBUG: Preprocessing completed, processed size: "
-              << processed.rows << "x" << processed.cols << std::endl;
-    std::cout << "ONNX DEBUG: Scale factors: " << scale_factors.width << ", " <<
-      scale_factors.height << std::endl;
-    std::cout << "ONNX DEBUG: Padding: " << padding.x << ", " << padding.y << std::endl;
+    // std::cout << "ONNX DEBUG: Preprocessing completed, processed size: "
+    //   << processed.rows << "x" << processed.cols << std::endl;
+    // std::cout << "ONNX DEBUG: Scale factors: " << scale_factors.width << ", " <<
+    // scale_factors.height << std::endl;
+    // std::cout << "ONNX DEBUG: Padding: " << padding.x << ", " << padding.y << std::endl;
 
     // Create input tensor
-    std::cout << "ONNX DEBUG: Creating input tensor..." << std::endl;
+    // std::cout << "ONNX DEBUG: Creating input tensor..." << std::endl;
     std::vector<int64_t> input_shape = input_shapes_[0];
     input_shape[0] = 1;     // batch size
     input_shape[2] = input_size_;     // height
     input_shape[3] = input_size_;     // width
-    std::cout << "ONNX DEBUG: Input shape: [" << input_shape[0] << ","
-              << input_shape[1] << "," << input_shape[2] << "," << input_shape[3] << "]" <<
-      std::endl;
+    // std::cout << "ONNX DEBUG: Input shape: [" << input_shape[0] << ","
+    //           << input_shape[1] << "," << input_shape[2] << "," << input_shape[3] << "]" <<
+    //   std::endl;
 
     size_t input_tensor_size = 1;
     for (auto & dim : input_shape) {
       input_tensor_size *= dim;
     }
-    std::cout << "ONNX DEBUG: Input tensor size: " << input_tensor_size << std::endl;
+    // std::cout << "ONNX DEBUG: Input tensor size: " << input_tensor_size << std::endl;
     std::vector<float> input_tensor_values(processed.ptr<float>(),
       processed.ptr<float>() + input_tensor_size);
-    std::cout << "ONNX DEBUG: Input tensor values copied" << std::endl;
+    // std::cout << "ONNX DEBUG: Input tensor values copied" << std::endl;
 
     std::vector<Ort::Value> input_tensors;
     input_tensors.push_back(
@@ -202,7 +202,7 @@ InferenceResult ONNXBackend::infer(
         input_shape.data(), input_shape.size()));
 
     // Run inference
-    std::cout << "ONNX DEBUG: About to run session..." << std::endl;
+    // std::cout << "ONNX DEBUG: About to run session..." << std::endl;
 
     // Convert string vectors to const char* arrays for ONNX Runtime
     std::vector<const char *> input_name_ptrs;
@@ -222,7 +222,7 @@ InferenceResult ONNXBackend::infer(
       input_name_ptrs.size(),
       output_name_ptrs.data(),
       output_name_ptrs.size());
-    std::cout << "ONNX DEBUG: Session run completed!" << std::endl;
+    // std::cout << "ONNX DEBUG: Session run completed!" << std::endl;
 
     auto end_time = std::chrono::high_resolution_clock::now();
     result.inference_time_ms = std::chrono::duration<double, std::milli>(
@@ -279,9 +279,9 @@ std::vector<Detection> ONNXBackend::postProcessPose(
     return detections;
   }
 
-  std::cout << "ONNX DEBUG: Output shape: [" << output_shape[0] << ", "
-            << output_shape[1] << ", " << output_shape[2] << "]" << std::endl;
-  std::cout << "ONNX DEBUG: Confidence threshold: " << conf_threshold << std::endl;
+  // std::cout << "ONNX DEBUG: Output shape: [" << output_shape[0] << ", "
+  //           << output_shape[1] << ", " << output_shape[2] << "]" << std::endl;
+  // std::cout << "ONNX DEBUG: Confidence threshold: " << conf_threshold << std::endl;
 
   int64_t batch_size = output_shape[0];
   int64_t dim1 = output_shape[1];
@@ -299,14 +299,14 @@ std::vector<Detection> ONNXBackend::postProcessPose(
     features = dim1;
     num_anchors = dim2;
     transposed = true;
-    std::cout << "ONNX DEBUG: Detected transposed format [1, 29, " << num_anchors << "]" <<
-      std::endl;
+    // std::cout << "ONNX DEBUG: Detected transposed format [1, 29, " << num_anchors << "]" <<
+    //   std::endl;
   } else if (dim2 == 29 && dim1 > 1000) {
     // Format: [1, 8400, 29]
     num_anchors = dim1;
     features = dim2;
     transposed = false;
-    std::cout << "ONNX DEBUG: Detected standard format [1, " << num_anchors << ", 29]" << std::endl;
+    // std::cout << "ONNX DEBUG: Detected standard format [1, " << num_anchors << ", 29]" << std::endl;
   } else {
     std::cerr << "ONNX DEBUG: Unexpected dimensions - dim1: " << dim1 << ", dim2: " << dim2 <<
       std::endl;
@@ -323,9 +323,9 @@ std::vector<Detection> ONNXBackend::postProcessPose(
   }
 
   int num_keypoints = (features - 5) / 3;
-  if (num_keypoints != 8) {
-    std::cout << "ONNX DEBUG: Warning - expected 8 keypoints, got " << num_keypoints << std::endl;
-  }
+  // if (num_keypoints != 8) {
+  //   std::cout << "ONNX DEBUG: Warning - expected 8 keypoints, got " << num_keypoints << std::endl;
+  // }
 
   // Calculate proper coordinate transformation parameters
   // The preprocessing used uniform scaling and padding to maintain aspect ratio
@@ -333,8 +333,8 @@ std::vector<Detection> ONNXBackend::postProcessPose(
   float pad_x = padding.x;
   float pad_y = padding.y;
 
-  std::cout << "ONNX DEBUG: Using scale factor: " << scale << std::endl;
-  std::cout << "ONNX DEBUG: Using padding: (" << pad_x << ", " << pad_y << ")" << std::endl;
+  // std::cout << "ONNX DEBUG: Using scale factor: " << scale << std::endl;
+  // std::cout << "ONNX DEBUG: Using padding: (" << pad_x << ", " << pad_y << ")" << std::endl;
 
   std::vector<cv::Rect2f> boxes;
   std::vector<float> confidences;
@@ -365,10 +365,10 @@ std::vector<Detection> ONNXBackend::postProcessPose(
     }
 
     // Debug first few detections
-    if (i < 5) {
-      std::cout << "ONNX DEBUG: Anchor " << i << " - conf: " << conf
-                << ", bbox: [" << cx << ", " << cy << ", " << w << ", " << h << "]" << std::endl;
-    }
+    // if (i < 5) {
+    //   std::cout << "ONNX DEBUG: Anchor " << i << " - conf: " << conf
+    //             << ", bbox: [" << cx << ", " << cy << ", " << w << ", " << h << "]" << std::endl;
+    // }
 
     if (conf > 0.01) {
       high_conf_detections++;                     // Count any reasonable confidence
@@ -431,15 +431,15 @@ std::vector<Detection> ONNXBackend::postProcessPose(
     }
   }
 
-  std::cout << "ONNX DEBUG: Processed " << num_anchors << " anchors" << std::endl;
-  std::cout << "ONNX DEBUG: Found " << high_conf_detections << " detections with conf > 0.01" <<
-    std::endl;
-  std::cout << "ONNX DEBUG: Found " << valid_detections << " detections above threshold " <<
-    conf_threshold << std::endl;
-  std::cout << "ONNX DEBUG: Valid boxes after bounds check: " << boxes.size() << std::endl;
+  // std::cout << "ONNX DEBUG: Processed " << num_anchors << " anchors" << std::endl;
+  // std::cout << "ONNX DEBUG: Found " << high_conf_detections << " detections with conf > 0.01" <<
+  //   std::endl;
+  // std::cout << "ONNX DEBUG: Found " << valid_detections << " detections above threshold " <<
+  //   conf_threshold << std::endl;
+  // std::cout << "ONNX DEBUG: Valid boxes after bounds check: " << boxes.size() << std::endl;
 
   if (boxes.empty()) {
-    std::cout << "ONNX DEBUG: No valid detections found" << std::endl;
+    // std::cout << "ONNX DEBUG: No valid detections found" << std::endl;
     return detections;
   }
 
@@ -456,7 +456,7 @@ std::vector<Detection> ONNXBackend::postProcessPose(
   std::vector<int> indices;
   cv::dnn::NMSBoxes(int_boxes, confidences, conf_threshold, nms_threshold, indices);
 
-  std::cout << "ONNX DEBUG: " << indices.size() << " detections after NMS" << std::endl;
+  // std::cout << "ONNX DEBUG: " << indices.size() << " detections after NMS" << std::endl;
 
   for (int idx : indices) {
     Detection det;

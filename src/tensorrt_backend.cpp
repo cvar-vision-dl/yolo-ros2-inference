@@ -26,7 +26,6 @@
 // ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
 // POSSIBILITY OF SUCH DAMAGE.
 
-
 #ifdef HAVE_TENSORRT
 
 #include <fstream>
@@ -273,7 +272,8 @@ InferenceResult TensorRTBackend::infer(
 
 //    std::cout << "TensorRT DEBUG: Preprocessing completed, processed size: "
 //              << processed.rows << "x" << processed.cols << std::endl;
-//    std::cout << "TensorRT DEBUG: Scale factors: " << scale_factors.width << ", " << scale_factors.height << std::endl;
+//    std::cout << "TensorRT DEBUG: Scale factors: " << scale_factors.width << ", "
+//              << scale_factors.height << std::endl;
 //    std::cout << "TensorRT DEBUG: Padding: " << padding.x << ", " << padding.y << std::endl;
 
   // Copy data to host buffer
@@ -360,11 +360,11 @@ std::vector<Detection> TensorRTBackend::postProcessPose(
   std::vector<Detection> detections;
 
 //    std::cout << "TensorRT DEBUG: Output dims: " << output_dims_.nbDims << " [";
-  for (int i = 0; i < output_dims_.nbDims; ++i) {
-    std::cout << output_dims_.d[i];
-    if (i < output_dims_.nbDims - 1) {std::cout << ", ";}
-  }
-  std::cout << "]" << std::endl;
+// for (int i = 0; i < output_dims_.nbDims; ++i) {
+//   std::cout << output_dims_.d[i];
+//   if (i < output_dims_.nbDims - 1) {std::cout << ", ";}
+// }
+// std::cout << "]" << std::endl;
 //    std::cout << "TensorRT DEBUG: Confidence threshold: " << conf_threshold << std::endl;
 
   if (output_dims_.nbDims != 3) {
@@ -385,15 +385,18 @@ std::vector<Detection> TensorRTBackend::postProcessPose(
     features = dim1;
     num_anchors = dim2;
     transposed = true;
-//        std::cout << "TensorRT DEBUG: Detected transposed format [1, 29, " << num_anchors << "]" << std::endl;
+//        std::cout << "TensorRT DEBUG: Detected transposed format [1, 29, "
+//              << num_anchors << "]" << std::endl;
   } else if (dim2 == 29 && dim1 > 1000) {
     // Format: [1, 8400, 29]
     num_anchors = dim1;
     features = dim2;
     transposed = false;
-//        std::cout << "TensorRT DEBUG: Detected standard format [1, " << num_anchors << ", 29]" << std::endl;
+//        std::cout << "TensorRT DEBUG: Detected standard format [1, "
+//                  << num_anchors << ", 29]" << std::endl;
   } else {
-//        std::cerr << "TensorRT DEBUG: Unexpected dimensions - dim1: " << dim1 << ", dim2: " << dim2 << std::endl;
+//        std::cerr << "TensorRT DEBUG: Unexpected dimensions - dim1: "
+//                  << dim1 << ", dim2: " << dim2 << std::endl;
     // Try to guess based on which dimension is larger
     if (dim1 > dim2) {
       num_anchors = dim1;
@@ -408,7 +411,8 @@ std::vector<Detection> TensorRTBackend::postProcessPose(
 
   int num_keypoints = (features - 5) / 3;
   if (num_keypoints != 8) {
-//        std::cout << "TensorRT DEBUG: Warning - expected 8 keypoints, got " << num_keypoints << std::endl;
+//        std::cout << "TensorRT DEBUG: Warning - expected 8 keypoints, got "
+//                  << num_keypoints << std::endl;
   }
 
   // Calculate proper coordinate transformation parameters
@@ -450,7 +454,7 @@ std::vector<Detection> TensorRTBackend::postProcessPose(
     // Debug first few detections
 //        if (i < 5) {
 //            std::cout << "TensorRT DEBUG: Anchor " << i << " - conf: " << conf
-//                      << ", bbox: [" << cx << ", " << cy << ", " << w << ", " << h << "]" << std::endl;
+//            << ", bbox: [" << cx << ", " << cy << ", " << w << ", " << h << "]" << std::endl;
 //        }
 
     if (conf > 0.01) {high_conf_detections++;}
@@ -480,7 +484,6 @@ std::vector<Detection> TensorRTBackend::postProcessPose(
       if (x1 >= 0 && y1 >= 0 && x2 > x1 && y2 > y1 &&
         x1 < original_size.width && y1 < original_size.height)
       {
-
         boxes.push_back(cv::Rect2f(x1, y1, x2 - x1, y2 - y1));
         confidences.push_back(conf);
 
@@ -514,8 +517,10 @@ std::vector<Detection> TensorRTBackend::postProcessPose(
   }
 
 //    std::cout << "TensorRT DEBUG: Processed " << num_anchors << " anchors" << std::endl;
-//    std::cout << "TensorRT DEBUG: Found " << high_conf_detections << " detections with conf > 0.01" << std::endl;
-//    std::cout << "TensorRT DEBUG: Found " << valid_detections << " detections above threshold " << conf_threshold << std::endl;
+//    std::cout << "TensorRT DEBUG: Found " << high_conf_detections
+//              << " detections with conf > 0.01" << std::endl;
+//    std::cout << "TensorRT DEBUG: Found " << valid_detections << " detections above threshold "
+//              << conf_threshold << std::endl;
 //    std::cout << "TensorRT DEBUG: Valid boxes after bounds check: " << boxes.size() << std::endl;
 
   if (boxes.empty()) {
@@ -579,6 +584,6 @@ std::vector<std::string> TensorRTBackend::getKeypointNames() const
   return keypoint_names_;
 }
 
-} // namespace yolo_inference
+}  // namespace yolo_inference
 
-#endif // HAVE_TENSORRT
+#endif  // HAVE_TENSORRT
