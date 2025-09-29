@@ -36,11 +36,77 @@ chmod +x scripts/build_package.sh
 ./scripts/build_package.sh
 ```
 
-### 2. Model Preparation
+### 2. Model Training & Preparation
+
+**Model Training**
+
+Train your Yolo model. The following parameters have been found the optimal. However, feel free to experiment. You can choose your yolo variant with `--model` e.g. `yolo11x-pose.pt, yolo11n-pose.pt, yolov8m-pose.pt, etc.`.
+
+```
+python scripts/yolo_training.py
+--data
+<path_to_train_val_dataset_yolo>/dataset.yaml
+--project
+<path_to_experiments_folder>
+--model
+yolo11x-pose.pt
+--pretrained
+--batch-size
+4
+--imgsz
+640
+--multiscale
+--val-scales
+320
+640
+832
+--val-every
+3
+```
+
+Use tensorboard to visualize training performance.
+
+**Model Distillation**
+
+A common and useful technique is to distill a big model (teacher) into a smaller and faster model (student). Before, preapre your environment:
+
+```
+pip uninstall ultralytics
+git clone https://github.com/alejodosr/yolo-distiller
+```
+
+
+Here a possible usage of the script:
+
+```
+PYTHONPATH=$PYTHONPATH:<path_to_yolo-distiller> python scripts/yolo_distillation.py
+--teacher
+<path_to_trained_teacher>/yolo11_x_img640.pt
+--student
+yolo11n-pose.pt
+--data
+<path_to_train_val_dataset_yolo>/dataset.yaml
+--project
+<path_to_experiments_folder>
+--batch-size
+4
+--imgsz
+640
+--multiscale
+--val-scales
+320
+640
+832
+--val-every
+3
+```
+
+Use tensorboard to visualize training performance.
+
+**Batch Export to ONNX and TensorRT**
 
 Convert your YOLO model to the appropriate format:
 
-**Batch Export to ONNX and TensorRT**
 ```
 python scripts/yolo_batch_exporter_validator.py --model-folders
 <folder_1> <folder_2> ...
