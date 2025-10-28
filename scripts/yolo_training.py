@@ -416,7 +416,7 @@ def main():
     print(f"Epochs: {args.epochs}")
     print(f"Batch Size: {args.batch_size}")
     print(f"Image Size: {args.imgsz}")
-    print(f"Learning Rate: {args.lr}")
+    print(f"Learning Rate: {args.lr0}")
     print(f"Device: {args.device or 'auto'}")
     print(f"Project: {args.project}")
     print(f"Name: {args.name}")
