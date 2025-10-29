@@ -285,6 +285,42 @@ def parse_arguments():
         help="Copy-paste augmentation (probability)"
     )
 
+    # Loss parameters
+    parser.add_argument(
+        "--box-loss",
+        type=float,
+        default=7.5,
+        help="Box loss gain"
+    )
+
+    parser.add_argument(
+        "--cls-loss",
+        type=float,
+        default=0.5,
+        help="Class loss gain"
+    )
+
+    parser.add_argument(
+        "--dfl-loss",
+        type=float,
+        default=1.5,
+        help="Distribution Focal Loss gain"
+    )
+
+    parser.add_argument(
+        "--pose-loss",
+        type=float,
+        default=12.0,
+        help="Pose loss gain"
+    )
+
+    parser.add_argument(
+        "--kobj-loss",
+        type=float,
+        default=2.0,
+        help="Objectness loss gain"
+    )
+
     # Advanced options
     parser.add_argument(
         "--resume",
@@ -491,6 +527,13 @@ def main():
         "mosaic": args.mosaic,
         "mixup": args.mixup,
         "copy_paste": args.copy_paste,
+
+        # Loss parameters
+        "box": args.box_loss,
+        "cls": args.cls_loss,
+        "dfl": args.dfl_loss,
+        "pose": args.pose_loss,
+        "kobj": args.kobj_loss,
 
         # Advanced options
         "pretrained": args.pretrained,
