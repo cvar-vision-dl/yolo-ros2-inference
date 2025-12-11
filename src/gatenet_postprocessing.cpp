@@ -135,7 +135,7 @@ float calculatePAFAffinity(
       if (paf_norm > 1e-6) {
         // Cosine similarity: dot product of unit vectors
         // Note: vy corresponds to x-direction, vx to y-direction in heatmap coordinates
-        float cosine = (unit_vector.x * vy + unit_vector.y * vx) / paf_norm;
+        float cosine = (unit_vector.y * vy + unit_vector.x * vx) / paf_norm;
         total_similarity += cosine;
         valid_points++;
       }
@@ -427,8 +427,18 @@ InferenceResult gateNetPostProcess(
 
       if (corner.z > 0) {   // Valid corner
         // Transform from model output to original image coordinates
-        float x_orig = (corner.x - padding.x) / scale_factors.width;
-        float y_orig = (corner.y - padding.y) / scale_factors.height;
+        // Get heatmap dimensions
+        int hm_width = heatmaps[0].cols;
+        int hm_height = heatmaps[0].rows;
+
+        // For GateNet with simple resize preprocessing:
+        // Transform directly from heatmap to original image
+        float hm_to_orig_x = static_cast<float>(original_size.width) / hm_width;
+        float hm_to_orig_y = static_cast<float>(original_size.height) / hm_height;
+
+        // Then in the corner transformation:
+        float x_orig = corner.x * hm_to_orig_x;
+        float y_orig = corner.y * hm_to_orig_y;
 
         det.keypoints.emplace_back(x_orig, y_orig, corner.z);
 
