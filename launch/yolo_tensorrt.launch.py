@@ -91,6 +91,12 @@ def generate_launch_description():
         description='Enable profiling to monitor performance'
     )
 
+    input_topic_arg = DeclareLaunchArgument(
+        'input_topic',
+        default_value='/camera/image_raw/compressed',
+        description='Input compressed image topic'
+    )
+
     # YOLO inference node with performance settings
     yolo_node = Node(
         package='yolo_inference_cpp',
@@ -105,7 +111,7 @@ def generate_launch_description():
             'max_detections': LaunchConfiguration('max_detections'),
             'publish_visualization': LaunchConfiguration('publish_visualization'),
             'enable_profiling': LaunchConfiguration('enable_profiling'),
-            'input_topic': '/camera/image_raw/compressed',
+            'input_topic': LaunchConfiguration('input_topic'),
             'output_topic': '/drone/pose_detections',
             'output_image_topic': '/drone/pose_visualization',
             'performance_topic': '/drone/inference_performance'
@@ -123,5 +129,6 @@ def generate_launch_description():
         max_detections_arg,
         publish_visualization_arg,
         enable_profiling_arg,
+        input_topic_arg,
         yolo_node
     ])
