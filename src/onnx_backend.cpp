@@ -34,6 +34,7 @@
 
 #include "yolo_inference_cpp/onnx_backend.hpp"
 #include "yolo_inference_cpp/preprocessing.hpp"
+#include "yolo_inference_cpp/gatenet_postprocessing.hpp"
 
 namespace yolo_inference
 {
@@ -41,6 +42,8 @@ namespace yolo_inference
 ONNXBackend::ONNXBackend()
 : task_type_(TaskType::POSE)
   , input_size_(640)
+  , input_width_(-1)
+  , input_height_(-1)
   , initialized_(false)
 {
 }
@@ -53,10 +56,14 @@ ONNXBackend::~ONNXBackend()
 bool ONNXBackend::initialize(
   const std::string & model_path,
   TaskType task,
-  int input_size)
+  int input_size,
+  int input_width,
+  int input_height)
 {
   task_type_ = task;
   input_size_ = input_size;
+  input_width_ = input_width;
+  input_height_ = input_height;
 
   try {
     // Create environment
@@ -156,7 +163,11 @@ InferenceResult ONNXBackend::infer(
   // std::cout << "ONNX DEBUG: Starting inference..." << std::endl;
   InferenceResult result;
   result.original_size = image.size();
-  result.input_size = cv::Size(input_size_, input_size_);
+
+  // Determine actual input dimensions (support non-square for GateNet)
+  int actual_width = (input_width_ > 0) ? input_width_ : input_size_;
+  int actual_height = (input_height_ > 0) ? input_height_ : input_size_;
+  result.input_size = cv::Size(actual_width, actual_height);
 
   auto start_time = std::chrono::high_resolution_clock::now();
 
@@ -164,7 +175,14 @@ InferenceResult ONNXBackend::infer(
     // std::cout << "ONNX DEBUG: Starting preprocessing..." << std::endl;
     // Preprocess image
     Preprocessor preprocessor;
-    cv::Mat processed = preprocessor.preprocess(image, input_size_);
+    cv::Mat processed;
+
+    // Use non-square preprocessing if width and height are specified
+    if (input_width_ > 0 && input_height_ > 0) {
+      processed = preprocessor.preprocess(image, input_width_, input_height_);
+    } else {
+      processed = preprocessor.preprocess(image, input_size_);
+    }
 
     // Store preprocessing info for coordinate transformation
     cv::Size2f scale_factors = preprocessor.getScaleFactors();
@@ -180,8 +198,8 @@ InferenceResult ONNXBackend::infer(
     // std::cout << "ONNX DEBUG: Creating input tensor..." << std::endl;
     std::vector<int64_t> input_shape = input_shapes_[0];
     input_shape[0] = 1;     // batch size
-    input_shape[2] = input_size_;     // height
-    input_shape[3] = input_size_;     // width
+    input_shape[2] = actual_height;     // height
+    input_shape[3] = actual_width;     // width
     // std::cout << "ONNX DEBUG: Input shape: [" << input_shape[0] << ","
     //           << input_shape[1] << "," << input_shape[2] << "," << input_shape[3] << "]" <<
     //   std::endl;
@@ -243,6 +261,37 @@ InferenceResult ONNXBackend::infer(
         conf_threshold,
         nms_threshold,
         keypoint_threshold);
+    } else if (task_type_ == TaskType::GATENET) {
+      // GateNet output format: [1, C, H, W] where C=24
+      // Convert to vector of cv::Mat for post-processing
+      if (output_shape.size() == 4 && output_shape[0] == 1) {
+        int num_channels = static_cast<int>(output_shape[1]);
+        int height = static_cast<int>(output_shape[2]);
+        int width = static_cast<int>(output_shape[3]);
+
+        std::vector<cv::Mat> output_mats;
+        for (int c = 0; c < num_channels; ++c) {
+          cv::Mat channel(height, width, CV_32F);
+          float * channel_data = output_data + c * height * width;
+          std::memcpy(channel.data, channel_data, height * width * sizeof(float));
+          output_mats.push_back(channel);
+        }
+
+        // Call GateNet post-processing
+        result = gateNetPostProcess(
+          output_mats,
+          result.original_size,
+          result.input_size,
+          scale_factors,
+          padding,
+          conf_threshold,   // Use as PAF threshold
+          keypoint_threshold,   // Use as corner threshold
+          3);   // min_corners
+        result.inference_time_ms = std::chrono::duration<double, std::milli>(
+          end_time - start_time).count();
+      } else {
+        std::cerr << "Invalid GateNet output shape" << std::endl;
+      }
     } else {
       result.detections = postProcessDetection(
         output_data,

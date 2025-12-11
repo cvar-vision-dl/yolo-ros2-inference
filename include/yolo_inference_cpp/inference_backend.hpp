@@ -40,7 +40,8 @@ enum class TaskType
 {
   DETECT,
   POSE,
-  SEGMENT
+  SEGMENT,
+  GATENET
 };
 
 enum class ModelFormat
@@ -76,7 +77,9 @@ public:
   virtual bool initialize(
     const std::string & model_path,
     TaskType task,
-    int input_size = 640) = 0;
+    int input_size = 640,
+    int input_width = -1,
+    int input_height = -1) = 0;
 
   virtual InferenceResult infer(
     const cv::Mat & image,

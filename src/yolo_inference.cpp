@@ -46,6 +46,8 @@ YOLOInterface::YOLOInterface(rclcpp::Node * node_ptr)
   node_ptr_->declare_parameter<std::string>("model_path", "yolo11n-pose.onnx");
   node_ptr_->declare_parameter<std::string>("task", "pose");
   node_ptr_->declare_parameter<int>("input_size", 640);
+  node_ptr_->declare_parameter<int>("input_width", -1);
+  node_ptr_->declare_parameter<int>("input_height", -1);
   node_ptr_->declare_parameter<double>("confidence_threshold", 0.5);
   node_ptr_->declare_parameter<double>("nms_threshold", 0.4);
   node_ptr_->declare_parameter<double>("keypoint_threshold", 0.3);
@@ -60,6 +62,8 @@ YOLOInterface::YOLOInterface(rclcpp::Node * node_ptr)
   model_path_ = node_ptr_->get_parameter("model_path").as_string();
   task_str_ = node_ptr_->get_parameter("task").as_string();
   input_size_ = node_ptr_->get_parameter("input_size").as_int();
+  int input_width = node_ptr_->get_parameter("input_width").as_int();
+  int input_height = node_ptr_->get_parameter("input_height").as_int();
   confidence_threshold_ = node_ptr_->get_parameter("confidence_threshold").as_double();
   nms_threshold_ = node_ptr_->get_parameter("nms_threshold").as_double();
   keypoint_threshold_ = node_ptr_->get_parameter("keypoint_threshold").as_double();
@@ -81,7 +85,7 @@ YOLOInterface::YOLOInterface(rclcpp::Node * node_ptr)
 
   // Initialize inference backend
   backend_ = createInferenceBackend(model_path_);
-  if (!backend_ || !backend_->initialize(model_path_, task_type_, input_size_)) {
+  if (!backend_ || !backend_->initialize(model_path_, task_type_, input_size_, input_width, input_height)) {
     RCLCPP_ERROR(get_logger(), "Failed to initialize inference backend");
     return;
   }

@@ -34,6 +34,7 @@
 
 #include "yolo_inference_cpp/tensorrt_backend.hpp"
 #include "yolo_inference_cpp/preprocessing.hpp"
+#include "yolo_inference_cpp/gatenet_postprocessing.hpp"
 
 namespace yolo_inference
 {
@@ -48,6 +49,8 @@ void TensorRTLogger::log(Severity severity, const char * msg) noexcept
 TensorRTBackend::TensorRTBackend()
 : task_type_(TaskType::POSE)
   , input_size_(640)
+  , input_width_(-1)
+  , input_height_(-1)
   , initialized_(false)
   , stream_(nullptr)
   , input_device_buffer_(nullptr)
@@ -72,9 +75,13 @@ TensorRTBackend::~TensorRTBackend()
 bool TensorRTBackend::initialize(
   const std::string & model_path,
   TaskType task,
-  int input_size)
+  int input_size,
+  int input_width,
+  int input_height)
 {
   task_type_ = task;
+  input_width_ = input_width;
+  input_height_ = input_height;
   input_size_ = input_size;
 
   // Initialize CUDA
@@ -258,14 +265,25 @@ InferenceResult TensorRTBackend::infer(
   // std::cout << "TensorRT DEBUG: Starting inference..." << std::endl;
   InferenceResult result;
   result.original_size = image.size();
-  result.input_size = cv::Size(input_size_, input_size_);
+
+  // Determine actual input dimensions (support non-square for GateNet)
+  int actual_width = (input_width_ > 0) ? input_width_ : input_size_;
+  int actual_height = (input_height_ > 0) ? input_height_ : input_size_;
+  result.input_size = cv::Size(actual_width, actual_height);
 
   auto start_time = std::chrono::high_resolution_clock::now();
 
   // std::cout << "TensorRT DEBUG: Starting preprocessing..." << std::endl;
   // Preprocess image
   Preprocessor preprocessor;
-  cv::Mat processed = preprocessor.preprocess(image, input_size_);
+  cv::Mat processed;
+
+  // Use non-square preprocessing if width and height are specified
+  if (input_width_ > 0 && input_height_ > 0) {
+    processed = preprocessor.preprocess(image, input_width_, input_height_);
+  } else {
+    processed = preprocessor.preprocess(image, input_size_);
+  }
 
   // Store preprocessing info for coordinate transformation
   cv::Size2f scale_factors = preprocessor.getScaleFactors();
@@ -334,6 +352,37 @@ InferenceResult TensorRTBackend::infer(
       conf_threshold,
       nms_threshold,
       keypoint_threshold);
+  } else if (task_type_ == TaskType::GATENET) {
+    // GateNet output format: [1, C, H, W] where C=24
+    // Convert to vector of cv::Mat for post-processing
+    if (output_dims_.nbDims == 4 && output_dims_.d[0] == 1) {
+      int num_channels = output_dims_.d[1];
+      int height = output_dims_.d[2];
+      int width = output_dims_.d[3];
+
+      std::vector<cv::Mat> output_mats;
+      for (int c = 0; c < num_channels; ++c) {
+        cv::Mat channel(height, width, CV_32F);
+        float * channel_data = output_host + c * height * width;
+        std::memcpy(channel.data, channel_data, height * width * sizeof(float));
+        output_mats.push_back(channel);
+      }
+
+      // Call GateNet post-processing
+      result = gateNetPostProcess(
+        output_mats,
+        result.original_size,
+        result.input_size,
+        scale_factors,
+        padding,
+        conf_threshold,   // Use as PAF threshold
+        keypoint_threshold,   // Use as corner threshold
+        3);   // min_corners
+      result.inference_time_ms = std::chrono::duration<double, std::milli>(
+        end_time - start_time).count();
+    } else {
+      std::cerr << "Invalid GateNet output shape" << std::endl;
+    }
   } else {
     result.detections = postProcessDetection(
       output_host,

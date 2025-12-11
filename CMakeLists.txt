@@ -128,6 +128,7 @@ add_library(${PROJECT_NAME}_lib
   src/onnx_backend.cpp
   src/profiler.cpp
   src/preprocessing.cpp
+  src/gatenet_postprocessing.cpp
 )
 
 # Set include directories for the library

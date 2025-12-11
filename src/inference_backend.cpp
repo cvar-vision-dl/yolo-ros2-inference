@@ -66,6 +66,8 @@ TaskType stringToTaskType(const std::string & task_str)
     return TaskType::DETECT;
   } else if (lower_task == "segment") {
     return TaskType::SEGMENT;
+  } else if (lower_task == "gatenet") {
+    return TaskType::GATENET;
   } else {
     std::cerr << "Warning: Unknown task type '" << task_str << "', defaulting to POSE" << std::endl;
     return TaskType::POSE;

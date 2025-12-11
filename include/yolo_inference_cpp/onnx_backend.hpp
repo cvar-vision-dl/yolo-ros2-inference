@@ -49,7 +49,9 @@ public:
   bool initialize(
     const std::string & model_path,
     TaskType task,
-    int input_size = 640) override;
+    int input_size = 640,
+    int input_width = -1,
+    int input_height = -1) override;
 
   InferenceResult infer(
     const cv::Mat & image,
@@ -87,6 +89,8 @@ private:
 
   TaskType task_type_;
   int input_size_;
+  int input_width_;
+  int input_height_;
   bool initialized_;
 
   // ONNX Runtime objects

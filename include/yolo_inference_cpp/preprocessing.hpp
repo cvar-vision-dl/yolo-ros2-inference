@@ -46,6 +46,15 @@ public:
     cv::Scalar mean = cv::Scalar(0, 0, 0),
     cv::Scalar std = cv::Scalar(1, 1, 1));
 
+  // Preprocess with non-square target size (for models like GateNet)
+  cv::Mat preprocess(
+    const cv::Mat & input,
+    int target_width,
+    int target_height,
+    bool normalize = true,
+    cv::Scalar mean = cv::Scalar(0, 0, 0),
+    cv::Scalar std = cv::Scalar(1, 1, 1));
+
   // Get scaling factors for coordinate transformation
   cv::Size2f getScaleFactors() const {return scale_factors_;}
   cv::Point2f getPadding() const {return padding_;}
