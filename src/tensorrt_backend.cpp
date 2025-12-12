@@ -204,18 +204,27 @@ bool TensorRTBackend::setupBindings()
     if (io_mode == nvinfer1::TensorIOMode::kINPUT) {
       input_tensor_name_ = std::string(tensor_name);
       input_dims_ = engine_->getTensorShape(tensor_name);
+
+      // FIX: Handle dynamic dimensions for allocation
       input_size_bytes_ = 1;
       for (int j = 0; j < input_dims_.nbDims; ++j) {
-        input_size_bytes_ *= input_dims_.d[j];
+        // If dimension is -1 (dynamic), assume 1 for single-image inference
+        int dim = input_dims_.d[j];
+        input_size_bytes_ *= (dim < 0 ? 1 : dim);
       }
       input_size_bytes_ *= sizeof(float);
       std::cout << "Found input tensor: " << input_tensor_name_ << std::endl;
+
     } else if (io_mode == nvinfer1::TensorIOMode::kOUTPUT) {
       output_tensor_name_ = std::string(tensor_name);
       output_dims_ = engine_->getTensorShape(tensor_name);
+
+      // FIX: Handle dynamic dimensions for allocation
       output_size_bytes_ = 1;
       for (int j = 0; j < output_dims_.nbDims; ++j) {
-        output_size_bytes_ *= output_dims_.d[j];
+        // If dimension is -1 (dynamic), assume 1 for single-image inference
+        int dim = output_dims_.d[j];
+        output_size_bytes_ *= (dim < 0 ? 1 : dim);
       }
       output_size_bytes_ *= sizeof(float);
       std::cout << "Found output tensor: " << output_tensor_name_ << std::endl;
@@ -355,33 +364,47 @@ InferenceResult TensorRTBackend::infer(
   } else if (task_type_ == TaskType::GATENET) {
     // GateNet output format: [1, C, H, W] where C=24
     // Convert to vector of cv::Mat for post-processing
-    if (output_dims_.nbDims == 4 && output_dims_.d[0] == 1) {
-      int num_channels = output_dims_.d[1];
-      int height = output_dims_.d[2];
-      int width = output_dims_.d[3];
 
-      std::vector<cv::Mat> output_mats;
-      for (int c = 0; c < num_channels; ++c) {
-        cv::Mat channel(height, width, CV_32F);
-        float * channel_data = output_host + c * height * width;
-        std::memcpy(channel.data, channel_data, height * width * sizeof(float));
-        output_mats.push_back(channel);
-      }
+    // FIX: Allow d[0] to be 1 (explicit) or -1 (dynamic batch)
+    bool valid_batch = (output_dims_.d[0] == 1 || output_dims_.d[0] == -1);
 
-      // Call GateNet post-processing
-      result = gateNetPostProcess(
-        output_mats,
-        result.original_size,
-        result.input_size,
-        scale_factors,
-        padding,
-        conf_threshold,   // Use as PAF threshold
-        keypoint_threshold,   // Use as corner threshold
-        3);   // min_corners
-      result.inference_time_ms = std::chrono::duration<double, std::milli>(
-        end_time - start_time).count();
+    if (output_dims_.nbDims == 4 && valid_batch) {
+        int num_channels = output_dims_.d[1];
+        int height = output_dims_.d[2];
+        int width = output_dims_.d[3];
+
+        // Safety check for dynamic height/width in engine
+        // If engine has dynamic H/W (-1), we must use the known input size / stride
+        // Assuming stride 4 for GateNet (640 input -> 160 output)
+        if (height < 0) height = result.input_size.height / 4;
+        if (width < 0) width = result.input_size.width / 4;
+
+        std::vector<cv::Mat> output_mats;
+        for (int c = 0; c < num_channels; ++c) {
+            cv::Mat channel(height, width, CV_32F);
+            float * channel_data = output_host + c * height * width;
+            std::memcpy(channel.data, channel_data, height * width * sizeof(float));
+            output_mats.push_back(channel);
+        }
+
+        // Call GateNet post-processing
+        result = gateNetPostProcess(
+            output_mats,
+            result.original_size,
+            result.input_size,
+            scale_factors,
+            padding,
+            conf_threshold,   // Use as PAF threshold
+            keypoint_threshold,   // Use as corner threshold
+            3);   // min_corners
+
+        // This timing update is redundant (calculated above), but harmless
+        result.inference_time_ms = std::chrono::duration<double, std::milli>(
+            end_time - start_time).count();
     } else {
-      std::cerr << "Invalid GateNet output shape" << std::endl;
+        std::cerr << "Invalid GateNet output shape. Dims: [";
+        for(int i=0; i<output_dims_.nbDims; i++) std::cerr << output_dims_.d[i] << " ";
+        std::cerr << "]" << std::endl;
     }
   } else {
     result.detections = postProcessDetection(
