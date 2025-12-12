@@ -97,6 +97,8 @@ private:
   std::string task_str_;
   TaskType task_type_;
   int input_size_;
+  int input_width_;
+  int input_height_;
   double confidence_threshold_;
   double nms_threshold_;
   double keypoint_threshold_;

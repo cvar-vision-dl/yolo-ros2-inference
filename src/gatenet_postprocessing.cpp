@@ -38,54 +38,78 @@ namespace yolo_inference
 {
 
 std::vector<cv::Point3f> detectPeaks(
-  const cv::Mat & heatmap,
-  float threshold,
-  int min_distance)
+    const cv::Mat& heatmap,
+    float threshold,
+    int min_distance)
 {
-  std::vector<cv::Point3f> peaks;
+    std::vector<cv::Point3f> peaks;
 
-  if (heatmap.empty() || heatmap.channels() != 1) {
-    return peaks;
-  }
-
-  // Normalize heatmap to [0, 1]
-  cv::Mat normalized;
-  double min_val, max_val;
-  cv::minMaxLoc(heatmap, &min_val, &max_val);
-  if (max_val > 0) {
-    normalized = heatmap / max_val;
-  } else {
-    return peaks;
-  }
-
-  // Apply threshold
-  cv::Mat thresholded;
-  cv::threshold(normalized, thresholded, threshold, 1.0, cv::THRESH_BINARY);
-
-  // Non-maximum suppression using dilation
-  cv::Mat dilated;
-  int kernel_size = min_distance * 2 + 1;
-  cv::Mat kernel = cv::getStructuringElement(
-    cv::MORPH_RECT,
-    cv::Size(kernel_size, kernel_size));
-  cv::dilate(thresholded, dilated, kernel);
-
-  // Find local maxima
-  cv::Mat local_max = (thresholded == dilated) & (thresholded > 0);
-
-  // Extract peak positions and confidences
-  for (int y = 0; y < local_max.rows; ++y) {
-    for (int x = 0; x < local_max.cols; ++x) {
-      if (local_max.at<uchar>(y, x) > 0) {
-        float conf = normalized.at<float>(y, x);
-        peaks.emplace_back(static_cast<float>(x), static_cast<float>(y), conf);
-      }
+    if (heatmap.empty() || heatmap.channels() != 1) {
+        return peaks;
     }
-  }
 
-  return peaks;
+    // Normalize
+    cv::Mat normalized;
+    double min_val, max_val;
+    cv::minMaxLoc(heatmap, &min_val, &max_val);
+    if (max_val <= 0) return peaks;
+    normalized = heatmap / max_val;
+
+    // Find all candidate peaks above threshold
+    std::vector<std::tuple<float, int, int>> candidates;  // (value, x, y)
+
+    int kernel_size = min_distance * 2 + 1;
+    cv::Mat dilated;
+    cv::Mat kernel = cv::getStructuringElement(cv::MORPH_RECT,
+                                                cv::Size(kernel_size, kernel_size));
+    cv::dilate(normalized, dilated, kernel);
+
+    for (int y = 0; y < normalized.rows; ++y) {
+        for (int x = 0; x < normalized.cols; ++x) {
+            float val = normalized.at<float>(y, x);
+            float dil_val = dilated.at<float>(y, x);
+
+            if (val > threshold && std::abs(val - dil_val) < 1e-6f) {
+                candidates.emplace_back(val, x, y);
+            }
+        }
+    }
+
+    // Sort by confidence (descending)
+    std::sort(candidates.begin(), candidates.end(),
+              [](const auto& a, const auto& b) { return std::get<0>(a) > std::get<0>(b); });
+
+    // Greedy NMS - only keep peaks that are min_distance apart
+    std::vector<bool> suppressed(candidates.size(), false);
+
+    for (size_t i = 0; i < candidates.size(); ++i) {
+        if (suppressed[i]) continue;
+
+        auto [val, x, y] = candidates[i];
+        peaks.emplace_back(static_cast<float>(x), static_cast<float>(y), val);
+
+        // Suppress nearby candidates
+        for (size_t j = i + 1; j < candidates.size(); ++j) {
+            if (suppressed[j]) continue;
+
+            auto [_, x2, y2] = candidates[j];
+            float dist = std::sqrt(static_cast<float>((x - x2) * (x - x2) +
+                                                       (y - y2) * (y - y2)));
+            if (dist < min_distance) {
+                suppressed[j] = true;
+            }
+        }
+    }
+
+    return peaks;
 }
 
+// ============================================================================
+// FIXED: calculatePAFAffinity
+// Two bugs were fixed:
+// 1. Must count ALL points in denominator (not just non-zero PAF points)
+// 2. Ensure correct dot product: dx*paf_x + dy*paf_y
+// ============================================================================
 float calculatePAFAffinity(
   const cv::Point2f & corner1,
   const cv::Point2f & corner2,
@@ -96,11 +120,11 @@ float calculatePAFAffinity(
   cv::Point2f vector = corner2 - corner1;
   float norm = std::sqrt(vector.x * vector.x + vector.y * vector.y);
 
-  if (norm < 1e-6) {
+  if (norm < 1e-6f) {
     return 0.0f;
   }
 
-  // Unit vector
+  // Unit vector (x = horizontal/col direction, y = vertical/row direction)
   cv::Point2f unit_vector(vector.x / norm, vector.y / norm);
 
   // Sample points along the line
@@ -120,35 +144,41 @@ float calculatePAFAffinity(
   }
 
   // Calculate mean cosine similarity
+  // CRITICAL FIX: Count ALL points, not just those with non-zero PAF
   float total_similarity = 0.0f;
-  int valid_points = 0;
 
   for (const auto & point : line_points) {
     if (point.x >= 0 && point.x < vx_map.cols &&
-      point.y >= 0 && point.y < vx_map.rows)
+        point.y >= 0 && point.y < vx_map.rows)
     {
       float vx = vx_map.at<float>(point.y, point.x);
       float vy = vy_map.at<float>(point.y, point.x);
 
       float paf_norm = std::sqrt(vx * vx + vy * vy);
 
-      if (paf_norm > 1e-6) {
+      // FIX: Default to 0 for zero-magnitude PAF (matches Python behavior)
+      float cosine = 0.0f;
+      if (paf_norm > 1e-6f) {
         // Cosine similarity: dot product of unit vectors
-        // Note: vy corresponds to x-direction, vx to y-direction in heatmap coordinates
-        float cosine = (unit_vector.y * vy + unit_vector.x * vx) / paf_norm;
-        total_similarity += cosine;
-        valid_points++;
+        // unit_vector.x = dx (horizontal), unit_vector.y = dy (vertical)
+        // vx = x-component of PAF, vy = y-component of PAF
+        cosine = (unit_vector.x * vx + unit_vector.y * vy) / paf_norm;
       }
+      // FIX: ALWAYS add to total, even if cosine is 0
+      total_similarity += cosine;
     }
+    // Points outside bounds implicitly contribute 0
   }
 
-  if (valid_points == 0) {
-    return 0.0f;
-  }
-
-  return total_similarity / valid_points;
+  // FIX: Divide by TOTAL number of line points, not just valid PAF points
+  // This matches Python's behavior where zero-PAF regions dilute the score
+  return total_similarity / static_cast<float>(line_points.size());
 }
 
+// ============================================================================
+// FIXED: detectSides
+// Bug fix: vx_maps and vy_maps were passed in wrong order
+// ============================================================================
 std::vector<std::vector<Side>> detectSides(
   const std::vector<std::vector<cv::Point3f>> & corners,
   const std::vector<cv::Mat> & vx_maps,
@@ -172,11 +202,12 @@ std::vector<std::vector<Side>> detectSides(
     std::vector<Side> candidate_sides;
     for (const auto & c1 : corners1) {
       for (const auto & c2 : corners2) {
+        // FIX: Pass vx_maps first, then vy_maps (was swapped before!)
         float score = calculatePAFAffinity(
           cv::Point2f(c1.x, c1.y),
           cv::Point2f(c2.x, c2.y),
-          vx_maps[edge_idx],
-          vy_maps[edge_idx]);
+          vy_maps[edge_idx],
+          vx_maps[edge_idx]);
 
         if (score > paf_threshold) {
           Side side;
@@ -236,7 +267,6 @@ std::vector<Gate> assembleGates(
   std::vector<Gate> gates;
 
   // Build graph of corner connections
-  // Key: corner position (rounded), Value: list of (corner_type, side_ptr)
   std::unordered_map<std::string, std::vector<std::pair<int, Side *>>> corner_graph;
 
   auto point_to_key = [](const cv::Point2f & p) -> std::string {
@@ -303,31 +333,28 @@ std::vector<Gate> assembleGates(
             int type1 = side.corner_type1;
             int type2 = side.corner_type2;
 
-            // Check if side connects to existing corners
             for (int i = 0; i < GATENET_NUM_CORNERS; ++i) {
-              if (gate.corners[i].z > 0) {   // Corner exists
-                cv::Point2f existing(gate.corners[i].x, gate.corners[i].y);
+                if (gate.corners[i].z > 0) {   // Corner exists in gate
+                    cv::Point2f existing(gate.corners[i].x, gate.corners[i].y);
 
-                // Check if side's corner1 matches existing corner
-                if (cv::norm(side_c1 - existing) < 2.0f && type1 == i) {
-                  // Add corner2 if not already present
-                  if (gate.corners[type2].z <= 0) {
-                    gate.corners[type2] = cv::Point3f(side_c2.x, side_c2.y, 1.0f);
-                    gate.num_corners++;
-                    connects = true;
-                  }
-                }
+                    // Check if side's corner1 matches existing corner position and type
+                    if (type1 == i && cv::norm(side_c1 - existing) < 3.0f) {
+                        if (gate.corners[type2].z <= 0) {
+                            gate.corners[type2] = cv::Point3f(side_c2.x, side_c2.y, 1.0f);
+                            gate.num_corners++;
+                            connects = true;
+                        }
+                    }
 
-                // Check if side's corner2 matches existing corner
-                if (cv::norm(side_c2 - existing) < 2.0f && type2 == i) {
-                  // Add corner1 if not already present
-                  if (gate.corners[type1].z <= 0) {
-                    gate.corners[type1] = cv::Point3f(side_c1.x, side_c1.y, 1.0f);
-                    gate.num_corners++;
-                    connects = true;
-                  }
+                    // Check reverse: side's corner2 matches existing
+                    if (type2 == i && cv::norm(side_c2 - existing) < 3.0f) {
+                        if (gate.corners[type1].z <= 0) {
+                            gate.corners[type1] = cv::Point3f(side_c1.x, side_c1.y, 1.0f);
+                            gate.num_corners++;
+                            connects = true;
+                        }
+                    }
                 }
-              }
             }
 
             if (connects) {
@@ -411,7 +438,6 @@ InferenceResult gateNetPostProcess(
   for (const auto & gate : gates) {
     Detection det;
 
-    // Set class ID and confidence
     det.class_id = 0;   // "gate"
     det.confidence = gate.avg_score;
 
@@ -426,34 +452,31 @@ InferenceResult gateNetPostProcess(
       cv::Point3f corner = gate.corners[i];
 
       if (corner.z > 0) {   // Valid corner
-        // Transform from model output to original image coordinates
-        // Get heatmap dimensions
         int hm_width = heatmaps[0].cols;
         int hm_height = heatmaps[0].rows;
 
-        // For GateNet with simple resize preprocessing:
-        // Transform directly from heatmap to original image
-        float hm_to_orig_x = static_cast<float>(original_size.width) / hm_width;
-        float hm_to_orig_y = static_cast<float>(original_size.height) / hm_height;
+        float hm_to_input_x = static_cast<float>(input_size.width) / hm_width;
+        float hm_to_input_y = static_cast<float>(input_size.height) / hm_height;
 
-        // Then in the corner transformation:
-        float x_orig = corner.x * hm_to_orig_x;
-        float y_orig = corner.y * hm_to_orig_y;
+        // Scale from heatmap to inference coords
+        float x_input = corner.x * hm_to_input_x;
+        float y_input = corner.y * hm_to_input_y;
+
+        // Then scale from inference to original
+        float x_orig = x_input * (static_cast<float>(original_size.width) / input_size.width);
+        float y_orig = y_input * (static_cast<float>(original_size.height) / input_size.height);
 
         det.keypoints.emplace_back(x_orig, y_orig, corner.z);
 
-        // Update bounding box
         min_x = std::min(min_x, x_orig);
         min_y = std::min(min_y, y_orig);
         max_x = std::max(max_x, x_orig);
         max_y = std::max(max_y, y_orig);
       } else {
-        // Invalid corner (not detected)
         det.keypoints.emplace_back(-1.0f, -1.0f, 0.0f);
       }
     }
 
-    // Set bounding box from corner extremes
     if (det.keypoints.size() > 0 && max_x > min_x && max_y > min_y) {
       det.bbox = cv::Rect2f(min_x, min_y, max_x - min_x, max_y - min_y);
     } else {

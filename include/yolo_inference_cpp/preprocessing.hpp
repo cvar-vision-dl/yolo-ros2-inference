@@ -30,6 +30,7 @@
 #pragma once
 
 #include <opencv2/opencv.hpp>
+#include "yolo_inference_cpp/inference_backend.hpp"
 
 namespace yolo_inference
 {
@@ -42,6 +43,7 @@ public:
   cv::Mat preprocess(
     const cv::Mat & input,
     int target_size,
+    TaskType task = TaskType::POSE,
     bool normalize = true,
     cv::Scalar mean = cv::Scalar(0, 0, 0),
     cv::Scalar std = cv::Scalar(1, 1, 1));
@@ -51,6 +53,7 @@ public:
     const cv::Mat & input,
     int target_width,
     int target_height,
+    TaskType task = TaskType::GATENET,
     bool normalize = true,
     cv::Scalar mean = cv::Scalar(0, 0, 0),
     cv::Scalar std = cv::Scalar(1, 1, 1));

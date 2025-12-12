@@ -62,8 +62,8 @@ YOLOInterface::YOLOInterface(rclcpp::Node * node_ptr)
   model_path_ = node_ptr_->get_parameter("model_path").as_string();
   task_str_ = node_ptr_->get_parameter("task").as_string();
   input_size_ = node_ptr_->get_parameter("input_size").as_int();
-  int input_width = node_ptr_->get_parameter("input_width").as_int();
-  int input_height = node_ptr_->get_parameter("input_height").as_int();
+  input_width_ = node_ptr_->get_parameter("input_width").as_int();
+  input_height_ = node_ptr_->get_parameter("input_height").as_int();
   confidence_threshold_ = node_ptr_->get_parameter("confidence_threshold").as_double();
   nms_threshold_ = node_ptr_->get_parameter("nms_threshold").as_double();
   keypoint_threshold_ = node_ptr_->get_parameter("keypoint_threshold").as_double();
@@ -85,7 +85,7 @@ YOLOInterface::YOLOInterface(rclcpp::Node * node_ptr)
 
   // Initialize inference backend
   backend_ = createInferenceBackend(model_path_);
-  if (!backend_ || !backend_->initialize(model_path_, task_type_, input_size_, input_width, input_height)) {
+  if (!backend_ || !backend_->initialize(model_path_, task_type_, input_size_, input_width_, input_height_)) {
     RCLCPP_ERROR(get_logger(), "Failed to initialize inference backend");
     return;
   }
@@ -120,7 +120,12 @@ YOLOInterface::YOLOInterface(rclcpp::Node * node_ptr)
   RCLCPP_INFO(get_logger(), "YOLO Inference Node initialized");
   RCLCPP_INFO(get_logger(), "  Model: %s", model_path_.c_str());
   RCLCPP_INFO(get_logger(), "  Task: %s", task_str_.c_str());
-  RCLCPP_INFO(get_logger(), "  Input size: %dx%d", input_size_, input_size_);
+  // Print actual input dimensions based on whether non-square input is used
+  if (input_width_ > 0 && input_height_ > 0) {
+    RCLCPP_INFO(get_logger(), "  Input size: %dx%d", input_width_, input_height_);
+  } else {
+    RCLCPP_INFO(get_logger(), "  Input size: %dx%d", input_size_, input_size_);
+  }
   RCLCPP_INFO(get_logger(), "  Subscribing to: %s", input_topic_.c_str());
   RCLCPP_INFO(get_logger(), "  Publishing to: %s", output_topic_.c_str());
   if (publish_visualization_) {

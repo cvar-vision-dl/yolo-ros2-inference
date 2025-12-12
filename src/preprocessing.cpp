@@ -28,6 +28,7 @@
 
 
 #include "yolo_inference_cpp/preprocessing.hpp"
+#include "yolo_inference_cpp/inference_backend.hpp"
 #include <opencv2/opencv.hpp>
 
 namespace yolo_inference
@@ -42,37 +43,51 @@ Preprocessor::Preprocessor()
 cv::Mat Preprocessor::preprocess(
   const cv::Mat & input,
   int target_size,
+  TaskType task,
   bool normalize,
   cv::Scalar mean,
   cv::Scalar std)
 {
-  // Calculate scale factor to maintain aspect ratio
-  float scale = std::min(
-    static_cast<float>(target_size) / input.cols,
-    static_cast<float>(target_size) / input.rows);
-
-  scale_factors_ = cv::Size2f(scale, scale);
-
-  // Calculate new size after scaling
-  int new_width = static_cast<int>(input.cols * scale);
-  int new_height = static_cast<int>(input.rows * scale);
-
-  // Resize the image maintaining aspect ratio
-  cv::Mat resized;
-  cv::resize(input, resized, cv::Size(new_width, new_height), 0, 0, cv::INTER_LINEAR);
-
-  // Calculate padding to reach target size
-  int pad_x = (target_size - new_width) / 2;
-  int pad_y = (target_size - new_height) / 2;
-  padding_ = cv::Point2f(static_cast<float>(pad_x), static_cast<float>(pad_y));
-
-  // Create output image with padding
+  // Task-aware preprocessing
   cv::Mat padded;
-  cv::copyMakeBorder(
-    resized, padded,
-    pad_y, target_size - new_height - pad_y,
-    pad_x, target_size - new_width - pad_x,
-    cv::BORDER_CONSTANT, cv::Scalar(114, 114, 114));
+
+  // YOLO tasks: aspect-ratio preserving resize with letterbox padding
+  if (task == TaskType::POSE || task == TaskType::DETECT || task == TaskType::SEGMENT) {
+    // Calculate scale factor to maintain aspect ratio
+    float scale = std::min(
+      static_cast<float>(target_size) / input.cols,
+      static_cast<float>(target_size) / input.rows);
+
+    scale_factors_ = cv::Size2f(scale, scale);
+
+    // Calculate new size after scaling
+    int new_width = static_cast<int>(input.cols * scale);
+    int new_height = static_cast<int>(input.rows * scale);
+
+    // Resize the image maintaining aspect ratio
+    cv::Mat resized;
+    cv::resize(input, resized, cv::Size(new_width, new_height), 0, 0, cv::INTER_LINEAR);
+
+    // Calculate padding to reach target size
+    int pad_x = (target_size - new_width) / 2;
+    int pad_y = (target_size - new_height) / 2;
+    padding_ = cv::Point2f(static_cast<float>(pad_x), static_cast<float>(pad_y));
+
+    // Create output image with padding
+    cv::copyMakeBorder(
+      resized, padded,
+      pad_y, target_size - new_height - pad_y,
+      pad_x, target_size - new_width - pad_x,
+      cv::BORDER_CONSTANT, cv::Scalar(114, 114, 114));
+  } else {
+    // GateNet: Direct resize (stretch to fit), no aspect ratio preservation
+    scale_factors_ = cv::Size2f(
+      static_cast<float>(target_size) / input.cols,
+      static_cast<float>(target_size) / input.rows);
+    padding_ = cv::Point2f(0.0f, 0.0f);
+
+    cv::resize(input, padded, cv::Size(target_size, target_size), 0, 0, cv::INTER_LINEAR);
+  }
 
   // Convert to float and normalize if requested
   cv::Mat result;
@@ -129,37 +144,52 @@ cv::Mat Preprocessor::preprocess(
   const cv::Mat & input,
   int target_width,
   int target_height,
+  TaskType task,
   bool normalize,
   cv::Scalar mean,
   cv::Scalar std)
 {
-  // Calculate scale factors to fit image into target size while maintaining aspect ratio
-  float scale_x = static_cast<float>(target_width) / input.cols;
-  float scale_y = static_cast<float>(target_height) / input.rows;
-  float scale = std::min(scale_x, scale_y);
-
-  scale_factors_ = cv::Size2f(scale, scale);
-
-  // Calculate new size after scaling
-  int new_width = static_cast<int>(input.cols * scale);
-  int new_height = static_cast<int>(input.rows * scale);
-
-  // Resize the image maintaining aspect ratio
-  cv::Mat resized;
-  cv::resize(input, resized, cv::Size(new_width, new_height), 0, 0, cv::INTER_LINEAR);
-
-  // Calculate padding to reach target size
-  int pad_x = (target_width - new_width) / 2;
-  int pad_y = (target_height - new_height) / 2;
-  padding_ = cv::Point2f(static_cast<float>(pad_x), static_cast<float>(pad_y));
-
-  // Create output image with padding
+  // Task-aware preprocessing
   cv::Mat padded;
-  cv::copyMakeBorder(
-    resized, padded,
-    pad_y, target_height - new_height - pad_y,
-    pad_x, target_width - new_width - pad_x,
-    cv::BORDER_CONSTANT, cv::Scalar(114, 114, 114));
+
+  if (task == TaskType::GATENET) {
+    // GateNet: Direct resize (stretch to fit target dimensions)
+    // No aspect ratio preservation, no padding
+    scale_factors_ = cv::Size2f(
+      static_cast<float>(target_width) / input.cols,
+      static_cast<float>(target_height) / input.rows);
+    padding_ = cv::Point2f(0.0f, 0.0f);
+
+    // Direct resize to target dimensions
+    cv::resize(input, padded, cv::Size(target_width, target_height), 0, 0, cv::INTER_LINEAR);
+  } else {
+    // YOLO tasks: Aspect-ratio preserving resize with letterbox padding
+    float scale_x = static_cast<float>(target_width) / input.cols;
+    float scale_y = static_cast<float>(target_height) / input.rows;
+    float scale = std::min(scale_x, scale_y);
+
+    scale_factors_ = cv::Size2f(scale, scale);
+
+    // Calculate new size after scaling
+    int new_width = static_cast<int>(input.cols * scale);
+    int new_height = static_cast<int>(input.rows * scale);
+
+    // Resize maintaining aspect ratio
+    cv::Mat resized;
+    cv::resize(input, resized, cv::Size(new_width, new_height), 0, 0, cv::INTER_LINEAR);
+
+    // Calculate padding
+    int pad_x = (target_width - new_width) / 2;
+    int pad_y = (target_height - new_height) / 2;
+    padding_ = cv::Point2f(static_cast<float>(pad_x), static_cast<float>(pad_y));
+
+    // Create padded output
+    cv::copyMakeBorder(
+      resized, padded,
+      pad_y, target_height - new_height - pad_y,
+      pad_x, target_width - new_width - pad_x,
+      cv::BORDER_CONSTANT, cv::Scalar(114, 114, 114));
+  }
 
   // Convert to float and normalize if requested
   cv::Mat result;
@@ -190,12 +220,17 @@ cv::Mat Preprocessor::preprocess(
     std::vector<cv::Mat> channels;
     cv::split(result, channels);
 
-    // Copy channels in CHW order (RGB)
+    // Copy channels in CHW order
     for (int c = 0; c < 3; ++c) {
-      cv::Mat channel = channels[2 - c];       // BGR to RGB conversion
-      std::memcpy(
-        chw_result.ptr<float>() + c * target_height * target_width,
-        channel.ptr<float>(), target_height * target_width * sizeof(float));
+        cv::Mat channel;
+        if (task == TaskType::GATENET) {
+            channel = channels[c];      // Keep BGR order for GateNet
+        } else {
+            channel = channels[2 - c];  // BGR to RGB for YOLO
+        }
+        std::memcpy(
+            chw_result.ptr<float>() + c * target_height * target_width,
+            channel.ptr<float>(), target_height * target_width * sizeof(float));
     }
 
     // Reshape to [1, 3, height, width]

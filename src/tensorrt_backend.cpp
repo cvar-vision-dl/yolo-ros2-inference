@@ -280,9 +280,9 @@ InferenceResult TensorRTBackend::infer(
 
   // Use non-square preprocessing if width and height are specified
   if (input_width_ > 0 && input_height_ > 0) {
-    processed = preprocessor.preprocess(image, input_width_, input_height_);
+    processed = preprocessor.preprocess(image, input_width_, input_height_, task_type_);
   } else {
-    processed = preprocessor.preprocess(image, input_size_);
+    processed = preprocessor.preprocess(image, input_size_, task_type_);
   }
 
   // Store preprocessing info for coordinate transformation
