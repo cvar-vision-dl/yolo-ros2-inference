@@ -206,8 +206,8 @@ std::vector<std::vector<Side>> detectSides(
         float score = calculatePAFAffinity(
           cv::Point2f(c1.x, c1.y),
           cv::Point2f(c2.x, c2.y),
-          vy_maps[edge_idx],
-          vx_maps[edge_idx]);
+          vx_maps[edge_idx],
+          vy_maps[edge_idx]);
 
         if (score > paf_threshold) {
           Side side;
