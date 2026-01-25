@@ -32,6 +32,8 @@
 #include <cuda_runtime.h>
 
 #include <memory>
+#include <string>
+#include <vector>
 
 #include "inference_backend.hpp"
 
@@ -124,6 +126,6 @@ private:
   std::vector<std::string> keypoint_names_;
 };
 
-} // namespace yolo_inference
+}  // namespace yolo_inference
 
-#endif // HAVE_TENSORRT
+#endif  // HAVE_TENSORRT

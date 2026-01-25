@@ -361,11 +361,11 @@ std::vector<Detection> TensorRTBackend::postProcessPose(
   std::vector<Detection> detections;
 
 //    std::cout << "TensorRT DEBUG: Output dims: " << output_dims_.nbDims << " [";
-  for (int i = 0; i < output_dims_.nbDims; ++i) {
-    std::cout << output_dims_.d[i];
-    if (i < output_dims_.nbDims - 1) {std::cout << ", ";}
-  }
-  std::cout << "]" << std::endl;
+// for (int i = 0; i < output_dims_.nbDims; ++i) {
+//   std::cout << output_dims_.d[i];
+//   if (i < output_dims_.nbDims - 1) {std::cout << ", ";}
+// }
+// std::cout << "]" << std::endl;
 //    std::cout << "TensorRT DEBUG: Confidence threshold: " << conf_threshold << std::endl;
 
   if (output_dims_.nbDims != 3) {

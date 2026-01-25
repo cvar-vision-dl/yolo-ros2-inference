@@ -4,6 +4,8 @@ install/
 log/
 logs/
 doxygen/
+models/
+rosbags/
 .cache/
 compile_commands.json
 COLCON_IGNORE

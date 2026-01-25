@@ -11,15 +11,21 @@ if(CMAKE_COMPILER_IS_GNUCXX OR CMAKE_CXX_COMPILER_ID MATCHES "Clang")
 endif()
 
 # Find dependencies
-find_package(ament_cmake REQUIRED)
-find_package(rclcpp REQUIRED)
-find_package(sensor_msgs REQUIRED)
-find_package(geometry_msgs REQUIRED)
-find_package(std_msgs REQUIRED)
-find_package(cv_bridge REQUIRED)
-find_package(image_transport REQUIRED)
-find_package(OpenCV REQUIRED)
-find_package(rosidl_default_generators REQUIRED)
+set(PROJECT_DEPENDENCIES
+  ament_cmake
+  rclcpp
+  sensor_msgs
+  geometry_msgs
+  std_msgs
+  cv_bridge
+  image_transport
+  OpenCV
+  rosidl_default_generators
+)
+
+foreach(DEPENDENCY ${PROJECT_DEPENDENCIES})
+  find_package(${DEPENDENCY} REQUIRED)
+endforeach()
 
 # CUDA support
 find_package(CUDA REQUIRED)
@@ -101,9 +107,6 @@ if(TENSORRT_INCLUDE_DIR AND TENSORRT_LIBRARY)
   include_directories(${TENSORRT_INCLUDE_DIR})
   list(APPEND LINK_LIBRARIES ${TENSORRT_LIBRARY} ${TENSORRT_PLUGIN_LIBRARY})
 else()
-#include <chrono>
-#include <memory>
-#include <string>
   message(WARNING "TensorRT not found. TensorRT support will be disabled.")
 endif()
 
@@ -117,9 +120,8 @@ else()
   message(WARNING "ONNX Runtime not found. ONNX support will be disabled.")
 endif()
 
-# Create the main executable
-add_executable(yolo_inference_node
-  src/yolo_inference_node.cpp
+# Create the YOLO inference library
+add_library(${PROJECT_NAME}_lib
   src/yolo_inference.cpp
   src/inference_backend.cpp
   src/tensorrt_backend.cpp
@@ -128,39 +130,75 @@ add_executable(yolo_inference_node
   src/preprocessing.cpp
 )
 
-# Add compile definitions
-target_compile_definitions(yolo_inference_node PRIVATE ${COMPILE_DEFINITIONS})
-
-# Link libraries
-ament_target_dependencies(yolo_inference_node
-  rclcpp
-  sensor_msgs
-  geometry_msgs
-  std_msgs
-  cv_bridge
-  image_transport
-  OpenCV
+# Set include directories for the library
+target_include_directories(${PROJECT_NAME}_lib
+  PUBLIC
+    $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
+    $<INSTALL_INTERFACE:include>
+  PRIVATE
+    ${OpenCV_INCLUDE_DIRS}
+    ${CUDA_INCLUDE_DIRS}
 )
 
-target_link_libraries(yolo_inference_node
+# Add compile definitions to library
+target_compile_definitions(${PROJECT_NAME}_lib PRIVATE ${COMPILE_DEFINITIONS})
+
+# Link libraries to the library
+ament_target_dependencies(${PROJECT_NAME}_lib
+  ${PROJECT_DEPENDENCIES}
+)
+
+target_link_libraries(${PROJECT_NAME}_lib
   ${OpenCV_LIBS}
   ${CUDA_LIBRARIES}
   ${LINK_LIBRARIES}
 )
 
-# Link against the generated messages
+# Link against the generated messages for the library
 rosidl_get_typesupport_target(cpp_typesupport_target ${PROJECT_NAME} "rosidl_typesupport_cpp")
-target_link_libraries(yolo_inference_node ${cpp_typesupport_target})
+target_link_libraries(${PROJECT_NAME}_lib ${cpp_typesupport_target})
 
-# Install
-install(TARGETS yolo_inference_node
-  DESTINATION lib/${PROJECT_NAME})
+# Create the main executable (only the node)
+add_executable(${PROJECT_NAME}_node
+  src/yolo_inference_node.cpp
+)
 
-install(DIRECTORY launch/
-  DESTINATION share/${PROJECT_NAME}/launch/)
+# Link the executable with the library
+target_link_libraries(${PROJECT_NAME}_node ${PROJECT_NAME}_lib)
 
-install(DIRECTORY config/
-  DESTINATION share/${PROJECT_NAME}/config/)
+# Export libraries and targets
+install(
+  TARGETS
+    ${PROJECT_NAME}_lib
+  EXPORT export_${PROJECT_NAME}
+  LIBRARY DESTINATION lib
+  ARCHIVE DESTINATION lib
+  RUNTIME DESTINATION bin
+  INCLUDES DESTINATION include
+)
+
+install(TARGETS
+  ${PROJECT_NAME}_node
+  DESTINATION lib/${PROJECT_NAME}
+)
+
+# Install the headers
+install(
+  DIRECTORY include/
+  DESTINATION include
+)
+
+# Install the launch directory
+install(DIRECTORY
+  launch
+  DESTINATION share/${PROJECT_NAME}
+)
+
+# Install the config directory
+install(DIRECTORY
+  config
+  DESTINATION share/${PROJECT_NAME}
+)
 
 # Testing
 if(BUILD_TESTING)
@@ -168,10 +206,13 @@ if(BUILD_TESTING)
   file(GLOB_RECURSE EXCLUDE_FILES
     build/*
     install/*
-    scripts/*
   )
   set(AMENT_LINT_AUTO_FILE_EXCLUDE ${EXCLUDE_FILES})
   ament_lint_auto_find_test_dependencies()
 endif()
+
+# Export libraries and targets for being used by other packages
+ament_export_targets(export_${PROJECT_NAME} HAS_LIBRARY_TARGET)
+ament_export_dependencies(${PROJECT_DEPENDENCIES})
 
 ament_package()

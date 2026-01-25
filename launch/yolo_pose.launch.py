@@ -91,7 +91,7 @@ def generate_launch_description():
     # YOLO inference node
     yolo_node = Node(
         package='yolo_inference_cpp',
-        executable='yolo_inference_node',
+        executable='yolo_inference_cpp_node',
         name='yolo_inference_node',
         parameters=[{
             'model_path': LaunchConfiguration('model_path'),

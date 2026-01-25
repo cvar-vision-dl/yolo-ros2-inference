@@ -124,75 +124,72 @@ YOLOInterface::YOLOInterface(rclcpp::Node * node_ptr)
   }
 }
 
-void YOLOInterface::processImage(const sensor_msgs::msg::CompressedImage::SharedPtr msg)
+InferenceResult YOLOInterface::processImage(const sensor_msgs::msg::CompressedImage::SharedPtr msg)
 {
   RCLCPP_INFO(
     get_logger(), "=== Received image: %zu bytes ===",
     msg->data.size());
-  auto total_timer = enable_profiling_ ?
-    profiler_->scopedTimer("total_processing") :
-    Profiler::ScopedTimer(*profiler_, "dummy");
-
+  // auto total_timer = enable_profiling_ ?
+  //   profiler_->scopedTimer("total_processing") :
+  //   Profiler::ScopedTimer(*profiler_, "dummy");
+  InferenceResult result;
   try {
     // Convert compressed image to OpenCV Mat
     cv::Mat image;
-    {
-      auto timer = enable_profiling_ ? profiler_->scopedTimer("image_conversion") :
-        Profiler::ScopedTimer(*profiler_, "dummy");
 
-      std::vector<uint8_t> buffer(msg->data.begin(), msg->data.end());
-      image = cv::imdecode(buffer, cv::IMREAD_COLOR);
+    // auto timer = enable_profiling_ ? profiler_->scopedTimer("image_conversion") :
+    //   Profiler::ScopedTimer(*profiler_, "dummy");
 
-      if (image.empty()) {
-        RCLCPP_ERROR(get_logger(), "Failed to decode compressed image");
-        return;
-      }
-      RCLCPP_INFO(get_logger(), "Image decoded successfully: %dx%d", image.cols, image.rows);
+    std::vector<uint8_t> buffer(msg->data.begin(), msg->data.end());
+    image = cv::imdecode(buffer, cv::IMREAD_COLOR);
+
+    if (image.empty()) {
+      RCLCPP_ERROR(get_logger(), "Failed to decode compressed image");
+      result.success = false;
+      return result;
     }
+    RCLCPP_INFO(get_logger(), "Image decoded successfully: %dx%d", image.cols, image.rows);
+
 
     // Run inference
-    InferenceResult result;
-    {
-      auto timer = enable_profiling_ ? profiler_->scopedTimer("inference") :
-        Profiler::ScopedTimer(*profiler_, "dummy");
 
-      result = backend_->infer(
-        image,
-        confidence_threshold_,
-        nms_threshold_,
-        keypoint_threshold_);
-      RCLCPP_INFO(
-        get_logger(), "Inference completed: %zu detections, %.2fms",
-        result.detections.size(), result.inference_time_ms);
-    }
+    // auto timer = enable_profiling_ ? profiler_->scopedTimer("inference") :
+    //   Profiler::ScopedTimer(*profiler_, "dummy");
+
+    result = backend_->infer(
+      image,
+      confidence_threshold_,
+      nms_threshold_,
+      keypoint_threshold_);
+    RCLCPP_INFO(
+      get_logger(), "Inference completed: %zu detections, %.2fms",
+      result.detections.size(), result.inference_time_ms);
+
 
     // Publish results
-    {
-      auto timer = enable_profiling_ ? profiler_->scopedTimer("message_creation") :
-        Profiler::ScopedTimer(*profiler_, "dummy");
 
-      auto detections_msg = createDetectionsMessage(result, msg->header);
-      auto raw_output_msg = createRawOutputMessage(result, msg->header);
+    // auto timer = enable_profiling_ ? profiler_->scopedTimer("message_creation") :
+    //   Profiler::ScopedTimer(*profiler_, "dummy");
 
-      detections_pub_->publish(detections_msg);
-      raw_output_pub_->publish(raw_output_msg);
+    publishDetections(result, msg->header);
+    publishRawOutput(result, msg->header);
 
-      if (publish_visualization_) {
-        auto visualization_msg = createVisualizationMessage(image, result, msg->header);
-        image_pub_->publish(*visualization_msg);
-      }
+    if (publish_visualization_) {
+      publishVisualization(image, result, msg->header);
+    }
 
-      if (enable_profiling_) {
-        auto performance_msg = createPerformanceInfoMessage(msg->header);
-        performance_pub_->publish(performance_msg);
-      }
+    if (enable_profiling_) {
+      publishPerformanceInfo(msg->header);
     }
 
     // Update performance metrics
-    updatePerformanceMetrics();
+    // RCLCPP_INFO(get_logger(), "Updating performance metricsssss");
+    // updatePerformanceMetrics();
+
   } catch (const std::exception & e) {
     RCLCPP_ERROR(get_logger(), "Error processing image: %s", e.what());
   }
+  return result;
 }
 
 yolo_inference_cpp::msg::KeypointDetectionArray YOLOInterface::createDetectionsMessage(
