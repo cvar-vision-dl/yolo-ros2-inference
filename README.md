@@ -1,6 +1,6 @@
 # YOLO Inference C++ for ROS2
 
-High-performance **YOLO inference implementation in C++** for ROS2, optimized for drone applications and real-time computer vision. This package provides a production-ready solution for deploying [Ultralytics](https://ultralytics.com/) YOLO models on edge devices and robotic systems.
+High-performance **YOLO inference implementation in C++** for ROS2, optimized for robotics applications and real-time computer vision. This package provides a production-ready solution for deploying [Ultralytics](https://ultralytics.com/) YOLO models on edge devices and robotic systems.
 
 ## Compatibility
 
@@ -23,7 +23,7 @@ Models trained with the Ultralytics framework can be directly exported to ONNX o
 
 ## Supported Platforms
 
-- **NVIDIA Jetson** (Xavier NX, Orin, AGX): Primary target for drone applications
+- **NVIDIA Jetson** (Xavier NX, Orin, AGX): Primary target for robotics applications
 - **x86_64 with NVIDIA GPU**: Development and testing
 - **ARM64**: General ARM64 support (limited testing)
 
@@ -45,7 +45,60 @@ chmod +x scripts/build_package.sh
 ./scripts/build_package.sh
 ```
 
-### 2. Model Training & Preparation
+### 2. Usage Examples
+
+> **Note**: This package is designed to work seamlessly with models trained using the [Ultralytics](https://github.com/ultralytics/ultralytics) framework. If you have already a trained model, check the preparation section below to export it to ONNX and/or TensorRT.
+
+**Basic Pose Detection**
+
+```bash
+ros2 launch yolo_inference_cpp yolo_pose.launch.py \
+    model_path:=models/yolo11n-pose.onnx \
+    confidence_threshold:=0.1 \
+    keypoint_threshold:=0.3 \
+    publish_visualization:=true \
+    input_topic:=/camera/image_raw/compressed \
+    input_size:=640 \
+    task:=pose
+```
+
+**High-Performance Edge Configuration**
+
+```bash
+ros2 launch yolo_inference_cpp yolo_tensorrt.launch.py \
+    model_path:=models/yolo11m-pose-jetson-fp16.engine \
+    confidence_threshold:=0.1 \
+    keypoint_threshold:=0.3 \
+    max_detections:=7 \
+    publish_visualization:=false \
+    enable_profiling:=true \
+    input_size:=640 \
+    task:=pose
+```
+
+**Multi-Model Detection**
+
+```bash
+# Object detection
+ros2 launch yolo_inference_cpp yolo_pose.launch.py \
+    model_path:=yolo11n.onnx \
+    task:=detect \
+    confidence_threshold:=0.6
+
+# Segmentation
+ros2 launch yolo_inference_cpp yolo_pose.launch.py \
+    model_path:=yolo11n-seg.onnx \
+    task:=segment \
+    confidence_threshold:=0.5
+
+# Pose
+ros2 launch yolo_inference_cpp yolo_pose.launch.py \
+    model_path:=yolo11n-pose.onnx \
+    task:=pose \
+    confidence_threshold:=0.5
+```
+
+### 3. [optional] Model Training & Preparation
 
 > **Note**: This package is designed to work seamlessly with models trained using the [Ultralytics](https://github.com/ultralytics/ultralytics) framework. Visit their [documentation](https://docs.ultralytics.com/) for detailed training guides and best practices.
 
@@ -205,19 +258,6 @@ pose
 
 After execution, feel free to open the generated `.html` files to visualize interactively every model performance.
 
-### 3. Launch the Node
-
-```bash
-# Source the workspace
-source ~/ros2_ws/install/setup.bash
-
-# ONNX Runtime (cross-platform)
-ros2 launch yolo_inference_cpp yolo_pose.launch.py model_path:=yolo11n-pose.onnx
-
-# TensorRT (high performance)
-ros2 launch yolo_inference_cpp yolo_tensorrt.launch.py model_path:=yolo11n-pose-fp16.engine
-```
-
 ### 4. Test with Sample Data
 
 ```bash
@@ -226,49 +266,6 @@ python3 tests/test_inference.py
 
 # Benchmark performance
 ./install/yolo_inference_cpp/lib/yolo_inference_cpp/benchmark yolo11n-pose.onnx pose 640 100
-```
-
-## Usage Examples
-
-### Basic Pose Detection
-
-```bash
-ros2 launch yolo_inference_cpp yolo_pose.launch.py \
-    model_path:=models/yolo11n-pose.onnx \
-    confidence_threshold:=0.1 \
-    keypoint_threshold:=0.3 \
-    publish_visualization:=true \
-    input_topic:=/camera/image_raw/compressed \
-    input_size:=640
-```
-
-### High-Performance Drone Configuration
-
-```bash
-ros2 launch yolo_inference_cpp yolo_tensorrt.launch.py \
-    model_path:=models/yolo11m-pose-jetson-fp16.engine \
-    confidence_threshold:=0.1 \
-    keypoint_threshold:=0.3 \
-    max_detections:=7 \
-    publish_visualization:=false \
-    enable_profiling:=true \
-    input_size:=640
-```
-
-### Multi-Model Detection
-
-```bash
-# Object detection
-ros2 launch yolo_inference_cpp yolo_pose.launch.py \
-    model_path:=yolo11n.onnx \
-    task:=detect \
-    confidence_threshold:=0.6
-
-# Segmentation
-ros2 launch yolo_inference_cpp yolo_pose.launch.py \
-    model_path:=yolo11n-seg.onnx \
-    task:=segment \
-    confidence_threshold:=0.5
 ```
 
 ## Configuration
@@ -511,7 +508,7 @@ python3 tests/test_inference.py
 
 ## Keywords
 
-`YOLO` `YOLOv8` `YOLOv11` `Ultralytics` `ROS2` `C++` `TensorRT` `ONNX` `pose estimation` `object detection` `instance segmentation` `edge AI` `Jetson` `drone` `UAV` `autonomous systems` `real-time inference` `computer vision` `robotics`
+`YOLO` `YOLOv8` `YOLOv11` `Ultralytics` `ROS2` `C++` `TensorRT` `ONNX` `pose estimation` `object detection` `instance segmentation` `edge AI` `Jetson` `drone` `embedded` `UAV` `autonomous systems` `real-time inference` `computer vision` `robotics`
 
 ## Authors
 Alejandro Rodríguez-Ramos [alejandro.dosr@gmail.com]
