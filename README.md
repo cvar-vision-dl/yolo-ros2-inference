@@ -18,14 +18,13 @@ Models trained with the Ultralytics framework can be directly exported to ONNX o
 - **📊 Comprehensive Profiling**: Detailed timing analysis for all processing stages
 - **🎯 Multiple Tasks**: Pose detection, object detection, and segmentation support
 - **🔌 ROS2 Integration**: Native ROS2 Humble support with custom messages
-- **🐳 Container Ready**: Docker support for both Jetson and x86_64 platforms [not yet validated]
 - **⚡ Jetson Optimized**: Special optimizations for NVIDIA Jetson platforms
 
 ## Supported Platforms
 
 - **NVIDIA Jetson** (Xavier NX, Orin, AGX): Primary target for robotics applications
 - **x86_64 with NVIDIA GPU**: Development and testing
-- **ARM64**: General ARM64 support (limited testing)
+- **ARM64**: General ARM64 support (Not yet validated)
 
 ## Quick Start
 
