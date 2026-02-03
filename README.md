@@ -1,6 +1,15 @@
 # YOLO Inference C++ for ROS2
 
-High-performance YOLO inference implementation in C++ for ROS2, optimized for drone applications and real-time processing. Supports both TensorRT and ONNX Runtime backends with comprehensive profiling and memory management.
+High-performance **YOLO inference implementation in C++** for ROS2, optimized for drone applications and real-time computer vision. This package provides a production-ready solution for deploying [Ultralytics](https://ultralytics.com/) YOLO models on edge devices and robotic systems.
+
+## Compatibility
+
+✅ **Fully compatible with [Ultralytics YOLO](https://docs.ultralytics.com/) models**, including:
+- **YOLOv8** (all variants: n/s/m/l/x for detect, pose, and segment tasks)
+- **YOLOv11** (all variants: n/s/m/l/x for detect, pose, and segment tasks)
+- Any future Ultralytics releases following the same export format
+
+Models trained with the Ultralytics framework can be directly exported to ONNX or TensorRT and deployed using this package with no modifications required.
 
 ## Features
 
@@ -37,6 +46,8 @@ chmod +x scripts/build_package.sh
 ```
 
 ### 2. Model Training & Preparation
+
+> **Note**: This package is designed to work seamlessly with models trained using the [Ultralytics](https://github.com/ultralytics/ultralytics) framework. Visit their [documentation](https://docs.ultralytics.com/) for detailed training guides and best practices.
 
 **Model Training**
 
@@ -497,6 +508,10 @@ python3 tests/test_inference.py
 - **Issues**: Report bugs and request features via GitHub Issues
 - **Discussions**: Ask questions and share experiences in GitHub Discussions
 - **Documentation**: Additional documentation available in the `docs/` directory
+
+## Keywords
+
+`YOLO` `YOLOv8` `YOLOv11` `Ultralytics` `ROS2` `C++` `TensorRT` `ONNX` `pose estimation` `object detection` `instance segmentation` `edge AI` `Jetson` `drone` `UAV` `autonomous systems` `real-time inference` `computer vision` `robotics`
 
 ## Authors
 Alejandro Rodríguez-Ramos [alejandro.dosr@gmail.com]
