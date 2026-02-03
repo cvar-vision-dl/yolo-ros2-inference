@@ -355,14 +355,7 @@ htop             # CPU usage
 
 ### Common Issues
 
-**1. TensorRT Engine Compatibility**
-```bash
-# Error: Engine built on different platform
-# Solution: Rebuild engine on target platform
-python3 scripts/convert_model.py model.pt --format tensorrt --precision fp16
-```
-
-**2. CUDA Out of Memory**
+**1. CUDA Out of Memory**
 ```bash
 # Error: CUDA out of memory during inference
 # Solutions:
@@ -371,7 +364,7 @@ python3 scripts/convert_model.py model.pt --format tensorrt --precision fp16
 # - Reduce max detections: max_detections:=5
 ```
 
-**3. Low FPS Performance**
+**2. Low FPS Performance**
 ```bash
 # Check GPU utilization
 nvidia-smi
@@ -380,10 +373,9 @@ nvidia-smi
 publish_visualization:=false
 
 # Use TensorRT instead of ONNX
-# Convert model: python3 scripts/convert_model.py model.pt --format tensorrt
 ```
 
-**4. Missing Dependencies**
+**3. Missing Dependencies**
 ```bash
 # Reinstall dependencies
 ./scripts/install_dependencies.sh
