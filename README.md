@@ -224,6 +224,12 @@ Use tensorboard to visualize training performance.
 
 **Batch Export to ONNX and TensorRT**
 
+For maximum performance on Jetson:
+
+1. **Use FP16 precision**: Reduces memory usage and improves speed
+2. **Optimize workspace size**: Balance between speed and memory
+3. **Build platform-specific engines**: Jetson engines won't work on desktop
+
 Convert your YOLO model to the appropriate format:
 
 ```
@@ -331,59 +337,6 @@ float64 image_conversion_ms
 float64 message_creation_ms
 int32 detections_count
 float64 fps
-```
-
-## Docker Deployment
-
-### Jetson Deployment
-
-```bash
-# Build Jetson image
-docker build -f docker/Dockerfile.jetson -t yolo_inference:jetson .
-
-# Run with models volume
-docker run --runtime nvidia --rm -it \
-    --network host \
-    -v $(pwd)/models:/models:ro \
-    yolo_inference:jetson \
-    ros2 launch yolo_inference_cpp yolo_tensorrt.launch.py \
-    model_path:=/models/yolo11n-pose-jetson-fp16.engine
-```
-
-### Desktop Development
-
-```bash
-# Build desktop image
-docker build -f docker/Dockerfile.x86_64 -t yolo_inference:desktop .
-
-# Run with visualization
-docker run --runtime nvidia --rm -it \
-    --network host \
-    -e DISPLAY=$DISPLAY \
-    -v /tmp/.X11-unix:/tmp/.X11-unix:rw \
-    -v $(pwd)/models:/models:ro \
-    yolo_inference:desktop \
-    ros2 launch yolo_inference_cpp yolo_pose.launch.py \
-    model_path:=/models/yolo11n-pose.onnx \
-    publish_visualization:=true
-```
-
-## Performance Optimization
-
-### TensorRT Optimization
-
-For maximum performance on Jetson:
-
-1. **Use FP16 precision**: Reduces memory usage and improves speed
-2. **Optimize workspace size**: Balance between speed and memory
-3. **Build platform-specific engines**: Jetson engines won't work on desktop
-
-```bash
-# Build Jetson-optimized engine
-python3 scripts/convert_model.py yolo11n-pose.pt \
-    --format tensorrt \
-    --precision fp16 \
-    --workspace-size 2  # GB, adjust based on available memory
 ```
 
 ### Profiling and Monitoring
