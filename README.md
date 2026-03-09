@@ -273,6 +273,55 @@ python3 tests/test_inference.py
 ./install/yolo_inference_cpp/lib/yolo_inference_cpp/benchmark yolo11n-pose.onnx pose 640 100
 ```
 
+## Usage Examples
+
+### Basic Pose Detection
+
+```bash
+ros2 launch yolo_inference_cpp yolo_pose.launch.py \
+    model_path:=models/yolo11n-pose.onnx \
+    confidence_threshold:=0.1 \
+    keypoint_threshold:=0.3 \
+    publish_visualization:=true \
+    input_topic:=/camera/image_raw/compressed \
+    input_size:=640
+```
+
+### High-Performance Drone Configuration
+
+```bash
+ros2 launch yolo_inference_cpp yolo_tensorrt.launch.py \
+    model_path:=models/yolo11m-pose-jetson-fp16.engine \
+    confidence_threshold:=0.1 \
+    keypoint_threshold:=0.3 \
+    max_detections:=7 \
+    publish_visualization:=false \
+    enable_profiling:=true \
+    input_size:=640
+```
+
+### Multi-Model Detection
+
+```bash
+# Object detection
+ros2 launch yolo_inference_cpp yolo_pose.launch.py \
+    model_path:=yolo11n.onnx \
+    task:=detect \
+    confidence_threshold:=0.6
+
+# Segmentation with custom class names
+ros2 launch yolo_inference_cpp yolo_pose.launch.py \
+    model_path:=yolo11n-seg.onnx \
+    task:=segment \
+    confidence_threshold:=0.5 \
+    publish_visualization:=true \
+    class_names:="['person', 'car', 'drone']"
+
+# GateNet gate detection (non-square input)
+ros2 launch yolo_inference_cpp gatenet.launch.py \
+    model_path:=gatenet.onnx \
+    input_topic:=/camera/image_raw/compressed
+```
 ## Configuration
 
 ### Launch Parameters
@@ -280,14 +329,18 @@ python3 tests/test_inference.py
 | Parameter | Type | Default | Description |
 |-----------|------|---------|-------------|
 | `model_path` | string | `yolo11n-pose.onnx` | Path to model file |
-| `task` | string | `pose` | Task type: pose, detect, segment |
+| `task` | string | `pose` | Task type: `pose`, `detect`, `segment`, `gatenet` |
 | `input_size` | int | `640` | Input image size (square) |
+| `input_width` | int | `-1` | Input width for non-square models (e.g. GateNet: 480) |
+| `input_height` | int | `-1` | Input height for non-square models (e.g. GateNet: 368) |
 | `confidence_threshold` | float | `0.5` | Detection confidence threshold |
 | `nms_threshold` | float | `0.4` | Non-maximum suppression threshold |
 | `keypoint_threshold` | float | `0.3` | Keypoint visibility threshold |
 | `max_detections` | int | `20` | Maximum detections per frame |
 | `publish_visualization` | bool | `false` | Enable visualization output |
 | `enable_profiling` | bool | `true` | Enable detailed profiling |
+| `class_names` | string[] | `[]` | Override class names (auto-detected from model if empty) |
+| `input_topic` | string | `/camera/image_raw/compressed` | Input compressed image topic |
 
 ### Configuration Files
 
@@ -456,3 +509,5 @@ python3 tests/test_inference.py
 
 ## Authors
 Alejandro Rodríguez-Ramos [alejandro.dosr@gmail.com]
+
+https://alejandrorodriguezramos.me

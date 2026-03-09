@@ -44,14 +44,14 @@ fi
 #fi
 
 # Install ROS2 dependencies
-echo "Installing ROS2 dependencies..."
-sudo apt install -y \
-    ros-humble-cv-bridge \
-    ros-humble-image-transport \
-    ros-humble-sensor-msgs \
-    ros-humble-geometry-msgs \
-    ros-humble-std-msgs \
-    ros-humble-vision-msgs
+# echo "Installing ROS2 dependencies..."
+# sudo apt install -y \
+#     ros-humble-cv-bridge \
+#     ros-humble-image-transport \
+#     ros-humble-sensor-msgs \
+#     ros-humble-geometry-msgs \
+#     ros-humble-std-msgs \
+#     ros-humble-vision-msgs
 
 # Install CUDA (platform specific)
 #if [ "$PLATFORM" = "jetson" ]; then
@@ -118,7 +118,7 @@ install_onnxruntime() {
 
     if [ "$PLATFORM" = "jetson" ]; then
         # Install ONNX Runtime for Jetson
-        ORT_VERSION="1.16.3"
+        ORT_VERSION="1.20.1"
         ORT_FILE="onnxruntime-linux-aarch64-gpu-${ORT_VERSION}.tgz"
         ORT_URL="https://github.com/microsoft/onnxruntime/releases/download/v${ORT_VERSION}/${ORT_FILE}"
 
@@ -131,7 +131,7 @@ install_onnxruntime() {
         echo 'export ONNXRUNTIME_ROOT=/usr/local/onnxruntime' >> ~/.bashrc
     else
         # Install ONNX Runtime for x86_64
-        ORT_VERSION="1.16.3"
+        ORT_VERSION="1.20.1"
         ORT_FILE="onnxruntime-linux-x64-gpu-${ORT_VERSION}.tgz"
         ORT_URL="https://github.com/microsoft/onnxruntime/releases/download/v${ORT_VERSION}/${ORT_FILE}"
 

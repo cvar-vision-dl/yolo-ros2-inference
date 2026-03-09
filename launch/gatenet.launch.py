@@ -29,66 +29,59 @@
 # POSSIBILITY OF SUCH DAMAGE.
 
 
-# import os
-# from ament_index_python.packages import get_package_share_directory
 from launch import LaunchDescription
 from launch.actions import DeclareLaunchArgument
 from launch.substitutions import LaunchConfiguration
 from launch_ros.actions import Node
 
-
 def generate_launch_description():
-    """Launch configuration for TensorRT optimized inference."""
-
-    # Declare launch arguments optimized for drone applications
+    # Declare launch arguments
     model_path_arg = DeclareLaunchArgument(
         'model_path',
-        default_value='yolo11n-pose-fp16.engine',
-        description='Path to TensorRT engine file'
+        default_value='gatenet.onnx',
+        description='Path to GateNet ONNX model file'
     )
 
-    task_arg = DeclareLaunchArgument(
-        'task',
-        default_value='pose',
-        description='Task type: pose, detect, or segment'
+    input_width_arg = DeclareLaunchArgument(
+        'input_width',
+        default_value='480',
+        description='Input image width for GateNet (default: 480)'
     )
 
-    input_size_arg = DeclareLaunchArgument(
-        'input_size',
-        default_value='640',
-        description='Input image size (must match engine)'
+    input_height_arg = DeclareLaunchArgument(
+        'input_height',
+        default_value='368',
+        description='Input image height for GateNet (default: 368)'
     )
 
-    # Drone-optimized thresholds
-    confidence_threshold_arg = DeclareLaunchArgument(
-        'confidence_threshold',
-        default_value='0.6',
-        description='Higher confidence for drone applications'
+    paf_threshold_arg = DeclareLaunchArgument(
+        'paf_threshold',
+        default_value='0.3',
+        description='PAF affinity threshold for side detection'
     )
 
-    keypoint_threshold_arg = DeclareLaunchArgument(
-        'keypoint_threshold',
-        default_value='0.4',
-        description='Higher keypoint threshold for reliability'
+    corner_threshold_arg = DeclareLaunchArgument(
+        'corner_threshold',
+        default_value='0.5',
+        description='Corner detection confidence threshold'
     )
 
-    max_detections_arg = DeclareLaunchArgument(
-        'max_detections',
-        default_value='10',
-        description='Maximum detections for performance'
+    min_corners_arg = DeclareLaunchArgument(
+        'min_corners',
+        default_value='3',
+        description='Minimum corners required to form a valid gate'
     )
 
-    # Performance settings
     publish_visualization_arg = DeclareLaunchArgument(
         'publish_visualization',
-        default_value='false',
-        description='Disable visualization for max performance'
+        default_value='true',
+        description='Whether to publish visualization images'
     )
 
     enable_profiling_arg = DeclareLaunchArgument(
         'enable_profiling',
         default_value='true',
-        description='Enable profiling to monitor performance'
+        description='Enable detailed profiling'
     )
 
     input_topic_arg = DeclareLaunchArgument(
@@ -97,24 +90,24 @@ def generate_launch_description():
         description='Input compressed image topic'
     )
 
-    # YOLO inference node with performance settings
-    yolo_node = Node(
+    # GateNet inference node
+    gatenet_node = Node(
         package='yolo_inference_cpp',
         executable='yolo_inference_cpp_node',
-        name='yolo_tensorrt_node',
+        name='gatenet_inference_node',
         parameters=[{
             'model_path': LaunchConfiguration('model_path'),
-            'task': LaunchConfiguration('task'),
-            'input_size': LaunchConfiguration('input_size'),
-            'confidence_threshold': LaunchConfiguration('confidence_threshold'),
-            'keypoint_threshold': LaunchConfiguration('keypoint_threshold'),
-            'max_detections': LaunchConfiguration('max_detections'),
+            'task': 'gatenet',
+            'input_width': LaunchConfiguration('input_width'),
+            'input_height': LaunchConfiguration('input_height'),
+            'confidence_threshold': LaunchConfiguration('paf_threshold'),
+            'keypoint_threshold': LaunchConfiguration('corner_threshold'),
             'publish_visualization': LaunchConfiguration('publish_visualization'),
             'enable_profiling': LaunchConfiguration('enable_profiling'),
             'input_topic': LaunchConfiguration('input_topic'),
-            'output_topic': '/drone/pose_detections',
-            'output_image_topic': '/drone/pose_visualization',
-            'performance_topic': '/drone/inference_performance'
+            'output_topic': '/gatenet/detections',
+            'output_image_topic': '/gatenet/result_image',
+            'performance_topic': '/gatenet/performance'
         }],
         output='screen',
         emulate_tty=True
@@ -122,13 +115,13 @@ def generate_launch_description():
 
     return LaunchDescription([
         model_path_arg,
-        task_arg,
-        input_size_arg,
-        confidence_threshold_arg,
-        keypoint_threshold_arg,
-        max_detections_arg,
+        input_width_arg,
+        input_height_arg,
+        paf_threshold_arg,
+        corner_threshold_arg,
+        min_corners_arg,
         publish_visualization_arg,
         enable_profiling_arg,
         input_topic_arg,
-        yolo_node
+        gatenet_node
     ])

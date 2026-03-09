@@ -67,7 +67,7 @@ public:
   rclcpp::Logger get_logger() const {return node_ptr_->get_logger();}
 
   // Public method to process images (moved from private callback)
-  void processImage(const sensor_msgs::msg::CompressedImage::SharedPtr msg);
+  InferenceResult processImage(const sensor_msgs::msg::CompressedImage::SharedPtr msg);
 
   // Public methods to create messages without publishing
   yolo_inference_cpp::msg::KeypointDetectionArray createDetectionsMessage(
@@ -97,11 +97,14 @@ private:
   std::string task_str_;
   TaskType task_type_;
   int input_size_;
+  int input_width_;
+  int input_height_;
   double confidence_threshold_;
   double nms_threshold_;
   double keypoint_threshold_;
   int max_detections_;
   bool publish_visualization_;
+  bool draw_bboxes_;
   bool enable_profiling_;
 
   std::string input_topic_;
@@ -122,6 +125,7 @@ private:
   // Performance tracking
   int frame_count_;
   double total_time_;
+  double last_fps_;
   std::chrono::steady_clock::time_point last_log_time_;
 };  // class YOLOInterface
 

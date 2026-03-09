@@ -49,7 +49,9 @@ public:
   bool initialize(
     const std::string & model_path,
     TaskType task,
-    int input_size = 640) override;
+    int input_size = 640,
+    int input_width = -1,
+    int input_height = -1) override;
 
   InferenceResult infer(
     const cv::Mat & image,
@@ -62,6 +64,7 @@ public:
   bool isInitialized() const override {return initialized_;}
   ModelFormat getFormat() const override {return ModelFormat::ONNX;}
   TaskType getTask() const override {return task_type_;}
+  void setClassNames(const std::vector<std::string> & names) override {class_names_ = names;}
 
 private:
   std::vector<Detection> postProcessPose(
@@ -85,8 +88,22 @@ private:
     float conf_threshold,
     float nms_threshold);
 
+  std::vector<Detection> postProcessSegmentation(
+    const float * output,
+    const std::vector<int64_t> & output_shape,
+    const float * proto_output,
+    const std::vector<int64_t> & proto_shape,
+    cv::Size input_size,
+    cv::Size original_size,
+    cv::Size2f scale_factors,
+    cv::Point2f padding,
+    float conf_threshold,
+    float nms_threshold);
+
   TaskType task_type_;
   int input_size_;
+  int input_width_;
+  int input_height_;
   bool initialized_;
 
   // ONNX Runtime objects

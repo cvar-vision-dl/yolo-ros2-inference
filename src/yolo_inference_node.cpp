@@ -41,11 +41,10 @@ public:
   YOLOInferenceNode()
   : Node("yolo_inference_node")
   {
-    // Create the YOLO interface with this node
+    // Create the YOLO interface with this node (declares all parameters including input_topic)
     yolo_interface_ = std::make_unique<YOLOInterface>(this);
 
-    // Get input topic parameter for subscriber
-    this->declare_parameter<std::string>("input_topic", "/camera/image_raw/compressed");
+    // Get input topic parameter for subscriber (declared by YOLOInterface)
     std::string input_topic = this->get_parameter("input_topic").as_string();
 
     // Create subscriber

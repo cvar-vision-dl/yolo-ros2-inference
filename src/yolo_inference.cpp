@@ -46,27 +46,37 @@ YOLOInterface::YOLOInterface(rclcpp::Node * node_ptr)
   node_ptr_->declare_parameter<std::string>("model_path", "yolo11n-pose.onnx");
   node_ptr_->declare_parameter<std::string>("task", "pose");
   node_ptr_->declare_parameter<int>("input_size", 640);
+  node_ptr_->declare_parameter<int>("input_width", -1);
+  node_ptr_->declare_parameter<int>("input_height", -1);
   node_ptr_->declare_parameter<double>("confidence_threshold", 0.5);
   node_ptr_->declare_parameter<double>("nms_threshold", 0.4);
   node_ptr_->declare_parameter<double>("keypoint_threshold", 0.3);
   node_ptr_->declare_parameter<int>("max_detections", 20);
   node_ptr_->declare_parameter<bool>("publish_visualization", false);
+  node_ptr_->declare_parameter<bool>("draw_bboxes", true);
   node_ptr_->declare_parameter<bool>("enable_profiling", true);
+  node_ptr_->declare_parameter<std::string>("input_topic", "/camera/image_raw/compressed");
   node_ptr_->declare_parameter<std::string>("output_topic", "/yolo/detections");
   node_ptr_->declare_parameter<std::string>("output_image_topic", "/yolo/result_image");
   node_ptr_->declare_parameter<std::string>("performance_topic", "/yolo/performance");
+  node_ptr_->declare_parameter<std::vector<std::string>>(
+    "class_names", std::vector<std::string>{});
 
   // Get parameters
   model_path_ = node_ptr_->get_parameter("model_path").as_string();
   task_str_ = node_ptr_->get_parameter("task").as_string();
   input_size_ = node_ptr_->get_parameter("input_size").as_int();
+  input_width_ = node_ptr_->get_parameter("input_width").as_int();
+  input_height_ = node_ptr_->get_parameter("input_height").as_int();
   confidence_threshold_ = node_ptr_->get_parameter("confidence_threshold").as_double();
   nms_threshold_ = node_ptr_->get_parameter("nms_threshold").as_double();
   keypoint_threshold_ = node_ptr_->get_parameter("keypoint_threshold").as_double();
   max_detections_ = node_ptr_->get_parameter("max_detections").as_int();
   publish_visualization_ = node_ptr_->get_parameter("publish_visualization").as_bool();
+  draw_bboxes_ = node_ptr_->get_parameter("draw_bboxes").as_bool();
   enable_profiling_ = node_ptr_->get_parameter("enable_profiling").as_bool();
 
+  input_topic_ = node_ptr_->get_parameter("input_topic").as_string();
   output_topic_ = node_ptr_->get_parameter("output_topic").as_string();
   output_image_topic_ = node_ptr_->get_parameter("output_image_topic").as_string();
   performance_topic_ = node_ptr_->get_parameter("performance_topic").as_string();
@@ -81,9 +91,16 @@ YOLOInterface::YOLOInterface(rclcpp::Node * node_ptr)
 
   // Initialize inference backend
   backend_ = createInferenceBackend(model_path_);
-  if (!backend_ || !backend_->initialize(model_path_, task_type_, input_size_)) {
+  if (!backend_ || !backend_->initialize(model_path_, task_type_, input_size_, input_width_, input_height_)) {
     RCLCPP_ERROR(get_logger(), "Failed to initialize inference backend");
     return;
+  }
+
+  // Override class names if provided via parameter
+  auto class_names_param = node_ptr_->get_parameter("class_names").as_string_array();
+  if (!class_names_param.empty()) {
+    backend_->setClassNames(class_names_param);
+    RCLCPP_INFO(get_logger(), "Using %zu custom class names", class_names_param.size());
   }
 
   RCLCPP_INFO(
@@ -111,12 +128,18 @@ YOLOInterface::YOLOInterface(rclcpp::Node * node_ptr)
   // Performance tracking
   frame_count_ = 0;
   total_time_ = 0.0;
+  last_fps_ = 0.0;
   last_log_time_ = std::chrono::steady_clock::now();
 
   RCLCPP_INFO(get_logger(), "YOLO Inference Node initialized");
   RCLCPP_INFO(get_logger(), "  Model: %s", model_path_.c_str());
   RCLCPP_INFO(get_logger(), "  Task: %s", task_str_.c_str());
-  RCLCPP_INFO(get_logger(), "  Input size: %dx%d", input_size_, input_size_);
+  // Print actual input dimensions based on whether non-square input is used
+  if (input_width_ > 0 && input_height_ > 0) {
+    RCLCPP_INFO(get_logger(), "  Input size: %dx%d", input_width_, input_height_);
+  } else {
+    RCLCPP_INFO(get_logger(), "  Input size: %dx%d", input_size_, input_size_);
+  }
   RCLCPP_INFO(get_logger(), "  Subscribing to: %s", input_topic_.c_str());
   RCLCPP_INFO(get_logger(), "  Publishing to: %s", output_topic_.c_str());
   if (publish_visualization_) {
@@ -124,75 +147,71 @@ YOLOInterface::YOLOInterface(rclcpp::Node * node_ptr)
   }
 }
 
-void YOLOInterface::processImage(const sensor_msgs::msg::CompressedImage::SharedPtr msg)
+InferenceResult YOLOInterface::processImage(const sensor_msgs::msg::CompressedImage::SharedPtr msg)
 {
   RCLCPP_INFO(
     get_logger(), "=== Received image: %zu bytes ===",
     msg->data.size());
-  auto total_timer = enable_profiling_ ?
-    profiler_->scopedTimer("total_processing") :
-    Profiler::ScopedTimer(*profiler_, "dummy");
-
+  // auto total_timer = enable_profiling_ ?
+  //   profiler_->scopedTimer("total_processing") :
+  //   Profiler::ScopedTimer(*profiler_, "dummy");
+  InferenceResult result;
   try {
     // Convert compressed image to OpenCV Mat
     cv::Mat image;
-    {
-      auto timer = enable_profiling_ ? profiler_->scopedTimer("image_conversion") :
-        Profiler::ScopedTimer(*profiler_, "dummy");
 
-      std::vector<uint8_t> buffer(msg->data.begin(), msg->data.end());
-      image = cv::imdecode(buffer, cv::IMREAD_COLOR);
+    // auto timer = enable_profiling_ ? profiler_->scopedTimer("image_conversion") :
+    //   Profiler::ScopedTimer(*profiler_, "dummy");
 
-      if (image.empty()) {
-        RCLCPP_ERROR(get_logger(), "Failed to decode compressed image");
-        return;
-      }
-      RCLCPP_INFO(get_logger(), "Image decoded successfully: %dx%d", image.cols, image.rows);
+    std::vector<uint8_t> buffer(msg->data.begin(), msg->data.end());
+    image = cv::imdecode(buffer, cv::IMREAD_COLOR);
+
+    if (image.empty()) {
+      RCLCPP_ERROR(get_logger(), "Failed to decode compressed image");
+      result.success = false;
+      return result;
     }
+    RCLCPP_INFO(get_logger(), "Image decoded successfully: %dx%d", image.cols, image.rows);
+
 
     // Run inference
-    InferenceResult result;
-    {
-      auto timer = enable_profiling_ ? profiler_->scopedTimer("inference") :
-        Profiler::ScopedTimer(*profiler_, "dummy");
 
-      result = backend_->infer(
-        image,
-        confidence_threshold_,
-        nms_threshold_,
-        keypoint_threshold_);
-      RCLCPP_INFO(
-        get_logger(), "Inference completed: %zu detections, %.2fms",
-        result.detections.size(), result.inference_time_ms);
-    }
+    // auto timer = enable_profiling_ ? profiler_->scopedTimer("inference") :
+    //   Profiler::ScopedTimer(*profiler_, "dummy");
+
+    result = backend_->infer(
+      image,
+      confidence_threshold_,
+      nms_threshold_,
+      keypoint_threshold_);
+    RCLCPP_INFO(
+      get_logger(), "Inference completed: %zu detections, %.2fms",
+      result.detections.size(), result.inference_time_ms);
+
 
     // Publish results
-    {
-      auto timer = enable_profiling_ ? profiler_->scopedTimer("message_creation") :
-        Profiler::ScopedTimer(*profiler_, "dummy");
 
-      auto detections_msg = createDetectionsMessage(result, msg->header);
-      auto raw_output_msg = createRawOutputMessage(result, msg->header);
+    // auto timer = enable_profiling_ ? profiler_->scopedTimer("message_creation") :
+    //   Profiler::ScopedTimer(*profiler_, "dummy");
 
-      detections_pub_->publish(detections_msg);
-      raw_output_pub_->publish(raw_output_msg);
+    publishDetections(result, msg->header);
+    publishRawOutput(result, msg->header);
 
-      if (publish_visualization_) {
-        auto visualization_msg = createVisualizationMessage(image, result, msg->header);
-        image_pub_->publish(*visualization_msg);
-      }
+    if (publish_visualization_) {
+      publishVisualization(image, result, msg->header);
+    }
 
-      if (enable_profiling_) {
-        auto performance_msg = createPerformanceInfoMessage(msg->header);
-        performance_pub_->publish(performance_msg);
-      }
+    if (enable_profiling_) {
+      publishPerformanceInfo(msg->header);
     }
 
     // Update performance metrics
     updatePerformanceMetrics();
+
   } catch (const std::exception & e) {
     RCLCPP_ERROR(get_logger(), "Error processing image: %s", e.what());
   }
+  return result;
 }
 
 yolo_inference_cpp::msg::KeypointDetectionArray YOLOInterface::createDetectionsMessage(
@@ -311,32 +330,48 @@ sensor_msgs::msg::Image::SharedPtr YOLOInterface::createVisualizationMessage(
   auto keypoint_names = backend_->getKeypointNames();
   auto class_names = backend_->getClassNames();
 
-  // Define colors for visualization
-  std::vector<cv::Scalar> colors = {
-    cv::Scalar(0, 255, 0),          // Green
-    cv::Scalar(255, 0, 0),          // Blue
-    cv::Scalar(0, 0, 255),          // Red
-    cv::Scalar(255, 255, 0),        // Cyan
-    cv::Scalar(255, 0, 255),        // Magenta
-    cv::Scalar(0, 255, 255),        // Yellow
+  // Fixed colors per class (BGR) — deterministic, no blinking
+  static const std::vector<cv::Scalar> colors = {
+    cv::Scalar(0, 255, 0),      // 0  Green
+    cv::Scalar(255, 0, 0),      // 1  Blue
+    cv::Scalar(0, 0, 255),      // 2  Red
+    cv::Scalar(255, 255, 0),    // 3  Cyan
+    cv::Scalar(255, 0, 255),    // 4  Magenta
+    cv::Scalar(0, 255, 255),    // 5  Yellow
+    cv::Scalar(128, 0, 255),    // 6  Purple
+    cv::Scalar(0, 128, 255),    // 7  Orange
+    cv::Scalar(0, 255, 128),    // 8  Spring green
+    cv::Scalar(255, 128, 0),    // 9  Sky blue
+    cv::Scalar(128, 255, 0),    // 10 Lime
+    cv::Scalar(0, 0, 128),      // 11 Dark red
   };
 
   for (size_t i = 0; i < result.detections.size(); ++i) {
     const auto & detection = result.detections[i];
-    cv::Scalar color = colors[i % colors.size()];
+    cv::Scalar color = colors[static_cast<size_t>(detection.class_id) % colors.size()];
 
-    // Draw bounding box - convert cv::Rect2f to cv::Rect for drawing
-    cv::Point2f tl(detection.bbox.x, detection.bbox.y);
-    cv::Point2f br(detection.bbox.x + detection.bbox.width,
-      detection.bbox.y + detection.bbox.height);
+    // Draw segmentation mask overlay if available
+    if (!detection.mask.empty() &&
+      detection.mask.size() == cv::Size(vis_image.cols, vis_image.rows))
+    {
+      cv::Mat colored_mask = cv::Mat::zeros(vis_image.size(), CV_8UC3);
+      colored_mask.setTo(color, detection.mask);
+      cv::addWeighted(vis_image, 1.0, colored_mask, 0.4, 0, vis_image);
+    }
 
-    // Convert to integer coordinates for drawing
-    cv::Point tl_int(static_cast<int>(std::round(tl.x)), static_cast<int>(std::round(tl.y)));
-    cv::Point br_int(static_cast<int>(std::round(br.x)), static_cast<int>(std::round(br.y)));
+    // Anchor point for the label (top-left of bbox)
+    cv::Point tl_int(
+      static_cast<int>(std::round(detection.bbox.x)),
+      static_cast<int>(std::round(detection.bbox.y)));
 
-    cv::rectangle(vis_image, tl_int, br_int, color, 2);
+    if (draw_bboxes_) {
+      cv::Point br_int(
+        static_cast<int>(std::round(detection.bbox.x + detection.bbox.width)),
+        static_cast<int>(std::round(detection.bbox.y + detection.bbox.height)));
+      cv::rectangle(vis_image, tl_int, br_int, color, 2);
+    }
 
-    // Draw label
+    // Always draw label
     std::string label = static_cast<size_t>(detection.class_id) < class_names.size() ?
       class_names[detection.class_id] : "unknown";
     label += " " + std::to_string(static_cast<int>(detection.confidence * 100)) + "%";
@@ -348,6 +383,9 @@ sensor_msgs::msg::Image::SharedPtr YOLOInterface::createVisualizationMessage(
       cv::Point(tl_int.x, tl_int.y - text_size.height - baseline),
       cv::Point(tl_int.x + text_size.width, tl_int.y),
       color, -1);
+    cv::putText(
+      vis_image, label, cv::Point(tl_int.x, tl_int.y - baseline),
+      cv::FONT_HERSHEY_SIMPLEX, 0.6, cv::Scalar(0, 0, 0), 4);
     cv::putText(
       vis_image, label, cv::Point(tl_int.x, tl_int.y - baseline),
       cv::FONT_HERSHEY_SIMPLEX, 0.6, cv::Scalar(255, 255, 255), 2);
@@ -374,9 +412,11 @@ sensor_msgs::msg::Image::SharedPtr YOLOInterface::createVisualizationMessage(
 
   // Add performance info on image
   if (enable_profiling_) {
-    double fps = frame_count_ > 0 ? frame_count_ / total_time_ : 0.0;
-    std::string perf_text = "FPS: " + std::to_string(static_cast<int>(fps)) +
+    std::string perf_text = "FPS: " + std::to_string(static_cast<int>(std::round(last_fps_))) +
       " | Detections: " + std::to_string(result.detections.size());
+    cv::putText(
+      vis_image, perf_text, cv::Point(10, 30),
+      cv::FONT_HERSHEY_SIMPLEX, 0.7, cv::Scalar(0, 0, 0), 4);
     cv::putText(
       vis_image, perf_text, cv::Point(10, 30),
       cv::FONT_HERSHEY_SIMPLEX, 0.7, cv::Scalar(0, 255, 0), 2);
@@ -428,10 +468,10 @@ void YOLOInterface::updatePerformanceMetrics()
 
   // Log performance every 5 seconds
   if (elapsed > 5.0) {
-    double fps = frame_count_ / elapsed;
+    last_fps_ = frame_count_ / elapsed;
     RCLCPP_INFO(
       get_logger(), "Performance: %.1f FPS, %d frames processed",
-      fps, frame_count_);
+      last_fps_, frame_count_);
 
     if (enable_profiling_) {
       profiler_->logStats();

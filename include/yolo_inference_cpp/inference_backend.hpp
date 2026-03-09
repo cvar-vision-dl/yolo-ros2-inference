@@ -40,7 +40,8 @@ enum class TaskType
 {
   DETECT,
   POSE,
-  SEGMENT
+  SEGMENT,
+  GATENET
 };
 
 enum class ModelFormat
@@ -61,6 +62,7 @@ struct Detection
 
 struct InferenceResult
 {
+  bool success;
   std::vector<Detection> detections;
   cv::Size input_size;
   cv::Size original_size;
@@ -75,7 +77,9 @@ public:
   virtual bool initialize(
     const std::string & model_path,
     TaskType task,
-    int input_size = 640) = 0;
+    int input_size = 640,
+    int input_width = -1,
+    int input_height = -1) = 0;
 
   virtual InferenceResult infer(
     const cv::Mat & image,
@@ -88,6 +92,7 @@ public:
   virtual bool isInitialized() const = 0;
   virtual ModelFormat getFormat() const = 0;
   virtual TaskType getTask() const = 0;
+  virtual void setClassNames(const std::vector<std::string> & names) {(void)names;}
 };
 
 std::unique_ptr<InferenceBackend> createInferenceBackend(const std::string & model_path);

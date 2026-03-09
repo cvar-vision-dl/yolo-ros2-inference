@@ -34,6 +34,7 @@
 
 #include "yolo_inference_cpp/tensorrt_backend.hpp"
 #include "yolo_inference_cpp/preprocessing.hpp"
+#include "yolo_inference_cpp/gatenet_postprocessing.hpp"
 
 namespace yolo_inference
 {
@@ -48,6 +49,8 @@ void TensorRTLogger::log(Severity severity, const char * msg) noexcept
 TensorRTBackend::TensorRTBackend()
 : task_type_(TaskType::POSE)
   , input_size_(640)
+  , input_width_(-1)
+  , input_height_(-1)
   , initialized_(false)
   , stream_(nullptr)
   , input_device_buffer_(nullptr)
@@ -72,9 +75,13 @@ TensorRTBackend::~TensorRTBackend()
 bool TensorRTBackend::initialize(
   const std::string & model_path,
   TaskType task,
-  int input_size)
+  int input_size,
+  int input_width,
+  int input_height)
 {
   task_type_ = task;
+  input_width_ = input_width;
+  input_height_ = input_height;
   input_size_ = input_size;
 
   // Initialize CUDA
@@ -197,18 +204,27 @@ bool TensorRTBackend::setupBindings()
     if (io_mode == nvinfer1::TensorIOMode::kINPUT) {
       input_tensor_name_ = std::string(tensor_name);
       input_dims_ = engine_->getTensorShape(tensor_name);
+
+      // FIX: Handle dynamic dimensions for allocation
       input_size_bytes_ = 1;
       for (int j = 0; j < input_dims_.nbDims; ++j) {
-        input_size_bytes_ *= input_dims_.d[j];
+        // If dimension is -1 (dynamic), assume 1 for single-image inference
+        int dim = input_dims_.d[j];
+        input_size_bytes_ *= (dim < 0 ? 1 : dim);
       }
       input_size_bytes_ *= sizeof(float);
       std::cout << "Found input tensor: " << input_tensor_name_ << std::endl;
+
     } else if (io_mode == nvinfer1::TensorIOMode::kOUTPUT) {
       output_tensor_name_ = std::string(tensor_name);
       output_dims_ = engine_->getTensorShape(tensor_name);
+
+      // FIX: Handle dynamic dimensions for allocation
       output_size_bytes_ = 1;
       for (int j = 0; j < output_dims_.nbDims; ++j) {
-        output_size_bytes_ *= output_dims_.d[j];
+        // If dimension is -1 (dynamic), assume 1 for single-image inference
+        int dim = output_dims_.d[j];
+        output_size_bytes_ *= (dim < 0 ? 1 : dim);
       }
       output_size_bytes_ *= sizeof(float);
       std::cout << "Found output tensor: " << output_tensor_name_ << std::endl;
@@ -258,14 +274,25 @@ InferenceResult TensorRTBackend::infer(
   // std::cout << "TensorRT DEBUG: Starting inference..." << std::endl;
   InferenceResult result;
   result.original_size = image.size();
-  result.input_size = cv::Size(input_size_, input_size_);
+
+  // Determine actual input dimensions (support non-square for GateNet)
+  int actual_width = (input_width_ > 0) ? input_width_ : input_size_;
+  int actual_height = (input_height_ > 0) ? input_height_ : input_size_;
+  result.input_size = cv::Size(actual_width, actual_height);
 
   auto start_time = std::chrono::high_resolution_clock::now();
 
   // std::cout << "TensorRT DEBUG: Starting preprocessing..." << std::endl;
   // Preprocess image
   Preprocessor preprocessor;
-  cv::Mat processed = preprocessor.preprocess(image, input_size_);
+  cv::Mat processed;
+
+  // Use non-square preprocessing if width and height are specified
+  if (input_width_ > 0 && input_height_ > 0) {
+    processed = preprocessor.preprocess(image, input_width_, input_height_, task_type_);
+  } else {
+    processed = preprocessor.preprocess(image, input_size_, task_type_);
+  }
 
   // Store preprocessing info for coordinate transformation
   cv::Size2f scale_factors = preprocessor.getScaleFactors();
@@ -334,6 +361,51 @@ InferenceResult TensorRTBackend::infer(
       conf_threshold,
       nms_threshold,
       keypoint_threshold);
+  } else if (task_type_ == TaskType::GATENET) {
+    // GateNet output format: [1, C, H, W] where C=24
+    // Convert to vector of cv::Mat for post-processing
+
+    // FIX: Allow d[0] to be 1 (explicit) or -1 (dynamic batch)
+    bool valid_batch = (output_dims_.d[0] == 1 || output_dims_.d[0] == -1);
+
+    if (output_dims_.nbDims == 4 && valid_batch) {
+        int num_channels = output_dims_.d[1];
+        int height = output_dims_.d[2];
+        int width = output_dims_.d[3];
+
+        // Safety check for dynamic height/width in engine
+        // If engine has dynamic H/W (-1), we must use the known input size / stride
+        // Assuming stride 4 for GateNet (640 input -> 160 output)
+        if (height < 0) height = result.input_size.height / 4;
+        if (width < 0) width = result.input_size.width / 4;
+
+        std::vector<cv::Mat> output_mats;
+        for (int c = 0; c < num_channels; ++c) {
+            cv::Mat channel(height, width, CV_32F);
+            float * channel_data = output_host + c * height * width;
+            std::memcpy(channel.data, channel_data, height * width * sizeof(float));
+            output_mats.push_back(channel);
+        }
+
+        // Call GateNet post-processing
+        result = gateNetPostProcess(
+            output_mats,
+            result.original_size,
+            result.input_size,
+            scale_factors,
+            padding,
+            conf_threshold,   // Use as PAF threshold
+            keypoint_threshold,   // Use as corner threshold
+            3);   // min_corners
+
+        // This timing update is redundant (calculated above), but harmless
+        result.inference_time_ms = std::chrono::duration<double, std::milli>(
+            end_time - start_time).count();
+    } else {
+        std::cerr << "Invalid GateNet output shape. Dims: [";
+        for(int i=0; i<output_dims_.nbDims; i++) std::cerr << output_dims_.d[i] << " ";
+        std::cerr << "]" << std::endl;
+    }
   } else {
     result.detections = postProcessDetection(
       output_host,
@@ -361,11 +433,11 @@ std::vector<Detection> TensorRTBackend::postProcessPose(
   std::vector<Detection> detections;
 
 //    std::cout << "TensorRT DEBUG: Output dims: " << output_dims_.nbDims << " [";
-  for (int i = 0; i < output_dims_.nbDims; ++i) {
-    std::cout << output_dims_.d[i];
-    if (i < output_dims_.nbDims - 1) {std::cout << ", ";}
-  }
-  std::cout << "]" << std::endl;
+// for (int i = 0; i < output_dims_.nbDims; ++i) {
+//   std::cout << output_dims_.d[i];
+//   if (i < output_dims_.nbDims - 1) {std::cout << ", ";}
+// }
+// std::cout << "]" << std::endl;
 //    std::cout << "TensorRT DEBUG: Confidence threshold: " << conf_threshold << std::endl;
 
   if (output_dims_.nbDims != 3) {

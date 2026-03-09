@@ -34,6 +34,7 @@
 
 #include "yolo_inference_cpp/onnx_backend.hpp"
 #include "yolo_inference_cpp/preprocessing.hpp"
+#include "yolo_inference_cpp/gatenet_postprocessing.hpp"
 
 namespace yolo_inference
 {
@@ -41,6 +42,8 @@ namespace yolo_inference
 ONNXBackend::ONNXBackend()
 : task_type_(TaskType::POSE)
   , input_size_(640)
+  , input_width_(-1)
+  , input_height_(-1)
   , initialized_(false)
 {
 }
@@ -53,10 +56,14 @@ ONNXBackend::~ONNXBackend()
 bool ONNXBackend::initialize(
   const std::string & model_path,
   TaskType task,
-  int input_size)
+  int input_size,
+  int input_width,
+  int input_height)
 {
   task_type_ = task;
   input_size_ = input_size;
+  input_width_ = input_width;
+  input_height_ = input_height;
 
   try {
     // Create environment
@@ -106,21 +113,51 @@ bool ONNXBackend::initialize(
       output_shapes_.push_back(output_shape);
     }
 
-    class_names_ = {
-      "gate"
-    };
-
-    // Initialize keypoint names (COCO pose format)
-    keypoint_names_ = {
-      "bottom_right_outer",
-      "bottom_left_outer",
-      "top_right_outer",
-      "top_left_outer",
-      "bottom_right_inner",
-      "bottom_left_inner",
-      "top_right_inner",
-      "top_left_inner"
-    };
+    // Initialize class names based on task and output shape
+    if (task == TaskType::GATENET) {
+      class_names_ = {"gate"};
+      keypoint_names_ = {
+        "bottom_right_outer", "bottom_left_outer",
+        "top_right_outer", "top_left_outer",
+        "bottom_right_inner", "bottom_left_inner",
+        "top_right_inner", "top_left_inner"
+      };
+    } else if (task == TaskType::POSE) {
+      // YOLO pose: 4 bbox + 1 conf + num_keypoints*3 features
+      // Default to COCO names for person detection
+      class_names_ = {"person"};
+      keypoint_names_ = {
+        "nose", "left_eye", "right_eye", "left_ear", "right_ear",
+        "left_shoulder", "right_shoulder", "left_elbow", "right_elbow",
+        "left_wrist", "right_wrist", "left_hip", "right_hip",
+        "left_knee", "right_knee", "left_ankle", "right_ankle"
+      };
+      // If 8-keypoint model (gate pose), use gate keypoint names
+      if (!output_shapes_.empty() && output_shapes_[0].size() == 3) {
+        int64_t features = std::min(output_shapes_[0][1], output_shapes_[0][2]);
+        if (features == 29) {  // 4+1+8*3 = 29 keypoints for gate
+          class_names_ = {"gate"};
+          keypoint_names_ = {
+            "bottom_right_outer", "bottom_left_outer",
+            "top_right_outer", "top_left_outer",
+            "bottom_right_inner", "bottom_left_inner",
+            "top_right_inner", "top_left_inner"
+          };
+        }
+      }
+    } else {
+      // DETECT or SEGMENT: determine num_classes from output shape
+      if (!output_shapes_.empty() && output_shapes_[0].size() == 3) {
+        int64_t dim1 = output_shapes_[0][1];
+        int64_t dim2 = output_shapes_[0][2];
+        int64_t features = (dim1 < dim2) ? dim1 : dim2;
+        int mask_coefs = (task == TaskType::SEGMENT) ? 32 : 0;
+        int64_t num_classes = features - 4 - mask_coefs;
+        for (int64_t c = 0; c < num_classes && c < 1000; ++c) {
+          class_names_.push_back("class_" + std::to_string(c));
+        }
+      }
+    }
 
     initialized_ = true;
     std::cout << "ONNX Runtime backend initialized successfully" << std::endl;
@@ -153,47 +190,58 @@ InferenceResult ONNXBackend::infer(
   float nms_threshold,
   float keypoint_threshold)
 {
-  std::cout << "ONNX DEBUG: Starting inference..." << std::endl;
+  // std::cout << "ONNX DEBUG: Starting inference..." << std::endl;
   InferenceResult result;
   result.original_size = image.size();
-  result.input_size = cv::Size(input_size_, input_size_);
+
+  // Determine actual input dimensions (support non-square for GateNet)
+  int actual_width = (input_width_ > 0) ? input_width_ : input_size_;
+  int actual_height = (input_height_ > 0) ? input_height_ : input_size_;
+  result.input_size = cv::Size(actual_width, actual_height);
 
   auto start_time = std::chrono::high_resolution_clock::now();
 
   try {
-    std::cout << "ONNX DEBUG: Starting preprocessing..." << std::endl;
+    // std::cout << "ONNX DEBUG: Starting preprocessing..." << std::endl;
     // Preprocess image
     Preprocessor preprocessor;
-    cv::Mat processed = preprocessor.preprocess(image, input_size_);
+    cv::Mat processed;
+
+    // Use non-square preprocessing if width and height are specified
+    if (input_width_ > 0 && input_height_ > 0) {
+      processed = preprocessor.preprocess(image, input_width_, input_height_, task_type_);
+    } else {
+      processed = preprocessor.preprocess(image, input_size_, task_type_);
+    }
 
     // Store preprocessing info for coordinate transformation
     cv::Size2f scale_factors = preprocessor.getScaleFactors();
     cv::Point2f padding = preprocessor.getPadding();
 
-    std::cout << "ONNX DEBUG: Preprocessing completed, processed size: "
-              << processed.rows << "x" << processed.cols << std::endl;
-    std::cout << "ONNX DEBUG: Scale factors: " << scale_factors.width << ", " <<
-      scale_factors.height << std::endl;
-    std::cout << "ONNX DEBUG: Padding: " << padding.x << ", " << padding.y << std::endl;
+    // std::cout << "ONNX DEBUG: Preprocessing completed, processed size: "
+    //   << processed.rows << "x" << processed.cols << std::endl;
+    // std::cout << "ONNX DEBUG: Scale factors: " << scale_factors.width << ", " <<
+    // scale_factors.height << std::endl;
+    // std::cout << "ONNX DEBUG: Padding: " << padding.x << ", " << padding.y << std::endl;
 
     // Create input tensor
-    std::cout << "ONNX DEBUG: Creating input tensor..." << std::endl;
+    // std::cout << "ONNX DEBUG: Creating input tensor..." << std::endl;
     std::vector<int64_t> input_shape = input_shapes_[0];
     input_shape[0] = 1;     // batch size
-    input_shape[2] = input_size_;     // height
-    input_shape[3] = input_size_;     // width
-    std::cout << "ONNX DEBUG: Input shape: [" << input_shape[0] << ","
-              << input_shape[1] << "," << input_shape[2] << "," << input_shape[3] << "]" <<
-      std::endl;
+    input_shape[2] = actual_height;     // height
+    input_shape[3] = actual_width;     // width
+    // std::cout << "ONNX DEBUG: Input shape: [" << input_shape[0] << ","
+    //           << input_shape[1] << "," << input_shape[2] << "," << input_shape[3] << "]" <<
+    //   std::endl;
 
     size_t input_tensor_size = 1;
     for (auto & dim : input_shape) {
       input_tensor_size *= dim;
     }
-    std::cout << "ONNX DEBUG: Input tensor size: " << input_tensor_size << std::endl;
+    // std::cout << "ONNX DEBUG: Input tensor size: " << input_tensor_size << std::endl;
     std::vector<float> input_tensor_values(processed.ptr<float>(),
       processed.ptr<float>() + input_tensor_size);
-    std::cout << "ONNX DEBUG: Input tensor values copied" << std::endl;
+    // std::cout << "ONNX DEBUG: Input tensor values copied" << std::endl;
 
     std::vector<Ort::Value> input_tensors;
     input_tensors.push_back(
@@ -202,7 +250,7 @@ InferenceResult ONNXBackend::infer(
         input_shape.data(), input_shape.size()));
 
     // Run inference
-    std::cout << "ONNX DEBUG: About to run session..." << std::endl;
+    // std::cout << "ONNX DEBUG: About to run session..." << std::endl;
 
     // Convert string vectors to const char* arrays for ONNX Runtime
     std::vector<const char *> input_name_ptrs;
@@ -222,7 +270,7 @@ InferenceResult ONNXBackend::infer(
       input_name_ptrs.size(),
       output_name_ptrs.data(),
       output_name_ptrs.size());
-    std::cout << "ONNX DEBUG: Session run completed!" << std::endl;
+    // std::cout << "ONNX DEBUG: Session run completed!" << std::endl;
 
     auto end_time = std::chrono::high_resolution_clock::now();
     result.inference_time_ms = std::chrono::duration<double, std::milli>(
@@ -243,6 +291,56 @@ InferenceResult ONNXBackend::infer(
         conf_threshold,
         nms_threshold,
         keypoint_threshold);
+    } else if (task_type_ == TaskType::GATENET) {
+      // GateNet output format: [1, C, H, W] where C=24
+      // Convert to vector of cv::Mat for post-processing
+      if (output_shape.size() == 4 && output_shape[0] == 1) {
+        int num_channels = static_cast<int>(output_shape[1]);
+        int height = static_cast<int>(output_shape[2]);
+        int width = static_cast<int>(output_shape[3]);
+
+        std::vector<cv::Mat> output_mats;
+        for (int c = 0; c < num_channels; ++c) {
+          cv::Mat channel(height, width, CV_32F);
+          float * channel_data = output_data + c * height * width;
+          std::memcpy(channel.data, channel_data, height * width * sizeof(float));
+          output_mats.push_back(channel);
+        }
+
+        // Call GateNet post-processing
+        result = gateNetPostProcess(
+          output_mats,
+          result.original_size,
+          result.input_size,
+          scale_factors,
+          padding,
+          conf_threshold,   // Use as PAF threshold
+          keypoint_threshold,   // Use as corner threshold
+          3);   // min_corners
+        result.inference_time_ms = std::chrono::duration<double, std::milli>(
+          end_time - start_time).count();
+      } else {
+        std::cerr << "Invalid GateNet output shape" << std::endl;
+      }
+    } else if (task_type_ == TaskType::SEGMENT) {
+      // Check for prototype masks in second output tensor
+      float * proto_data = nullptr;
+      std::vector<int64_t> proto_shape;
+      if (output_tensors.size() > 1) {
+        proto_data = output_tensors[1].GetTensorMutableData<float>();
+        proto_shape = output_tensors[1].GetTensorTypeAndShapeInfo().GetShape();
+      }
+      result.detections = postProcessSegmentation(
+        output_data,
+        output_shape,
+        proto_data,
+        proto_shape,
+        result.input_size,
+        result.original_size,
+        scale_factors,
+        padding,
+        conf_threshold,
+        nms_threshold);
     } else {
       result.detections = postProcessDetection(
         output_data,
@@ -279,9 +377,9 @@ std::vector<Detection> ONNXBackend::postProcessPose(
     return detections;
   }
 
-  std::cout << "ONNX DEBUG: Output shape: [" << output_shape[0] << ", "
-            << output_shape[1] << ", " << output_shape[2] << "]" << std::endl;
-  std::cout << "ONNX DEBUG: Confidence threshold: " << conf_threshold << std::endl;
+  // std::cout << "ONNX DEBUG: Output shape: [" << output_shape[0] << ", "
+  //           << output_shape[1] << ", " << output_shape[2] << "]" << std::endl;
+  // std::cout << "ONNX DEBUG: Confidence threshold: " << conf_threshold << std::endl;
 
   int64_t batch_size = output_shape[0];
   int64_t dim1 = output_shape[1];
@@ -299,14 +397,14 @@ std::vector<Detection> ONNXBackend::postProcessPose(
     features = dim1;
     num_anchors = dim2;
     transposed = true;
-    std::cout << "ONNX DEBUG: Detected transposed format [1, 29, " << num_anchors << "]" <<
-      std::endl;
+    // std::cout << "ONNX DEBUG: Detected transposed format [1, 29, " << num_anchors << "]" <<
+    //   std::endl;
   } else if (dim2 == 29 && dim1 > 1000) {
     // Format: [1, 8400, 29]
     num_anchors = dim1;
     features = dim2;
     transposed = false;
-    std::cout << "ONNX DEBUG: Detected standard format [1, " << num_anchors << ", 29]" << std::endl;
+    // std::cout << "ONNX DEBUG: Detected standard format [1, " << num_anchors << ", 29]" << std::endl;
   } else {
     std::cerr << "ONNX DEBUG: Unexpected dimensions - dim1: " << dim1 << ", dim2: " << dim2 <<
       std::endl;
@@ -323,9 +421,9 @@ std::vector<Detection> ONNXBackend::postProcessPose(
   }
 
   int num_keypoints = (features - 5) / 3;
-  if (num_keypoints != 8) {
-    std::cout << "ONNX DEBUG: Warning - expected 8 keypoints, got " << num_keypoints << std::endl;
-  }
+  // if (num_keypoints != 8) {
+  //   std::cout << "ONNX DEBUG: Warning - expected 8 keypoints, got " << num_keypoints << std::endl;
+  // }
 
   // Calculate proper coordinate transformation parameters
   // The preprocessing used uniform scaling and padding to maintain aspect ratio
@@ -333,8 +431,8 @@ std::vector<Detection> ONNXBackend::postProcessPose(
   float pad_x = padding.x;
   float pad_y = padding.y;
 
-  std::cout << "ONNX DEBUG: Using scale factor: " << scale << std::endl;
-  std::cout << "ONNX DEBUG: Using padding: (" << pad_x << ", " << pad_y << ")" << std::endl;
+  // std::cout << "ONNX DEBUG: Using scale factor: " << scale << std::endl;
+  // std::cout << "ONNX DEBUG: Using padding: (" << pad_x << ", " << pad_y << ")" << std::endl;
 
   std::vector<cv::Rect2f> boxes;
   std::vector<float> confidences;
@@ -365,10 +463,10 @@ std::vector<Detection> ONNXBackend::postProcessPose(
     }
 
     // Debug first few detections
-    if (i < 5) {
-      std::cout << "ONNX DEBUG: Anchor " << i << " - conf: " << conf
-                << ", bbox: [" << cx << ", " << cy << ", " << w << ", " << h << "]" << std::endl;
-    }
+    // if (i < 5) {
+    //   std::cout << "ONNX DEBUG: Anchor " << i << " - conf: " << conf
+    //             << ", bbox: [" << cx << ", " << cy << ", " << w << ", " << h << "]" << std::endl;
+    // }
 
     if (conf > 0.01) {
       high_conf_detections++;                     // Count any reasonable confidence
@@ -431,15 +529,15 @@ std::vector<Detection> ONNXBackend::postProcessPose(
     }
   }
 
-  std::cout << "ONNX DEBUG: Processed " << num_anchors << " anchors" << std::endl;
-  std::cout << "ONNX DEBUG: Found " << high_conf_detections << " detections with conf > 0.01" <<
-    std::endl;
-  std::cout << "ONNX DEBUG: Found " << valid_detections << " detections above threshold " <<
-    conf_threshold << std::endl;
-  std::cout << "ONNX DEBUG: Valid boxes after bounds check: " << boxes.size() << std::endl;
+  // std::cout << "ONNX DEBUG: Processed " << num_anchors << " anchors" << std::endl;
+  // std::cout << "ONNX DEBUG: Found " << high_conf_detections << " detections with conf > 0.01" <<
+  //   std::endl;
+  // std::cout << "ONNX DEBUG: Found " << valid_detections << " detections above threshold " <<
+  //   conf_threshold << std::endl;
+  // std::cout << "ONNX DEBUG: Valid boxes after bounds check: " << boxes.size() << std::endl;
 
   if (boxes.empty()) {
-    std::cout << "ONNX DEBUG: No valid detections found" << std::endl;
+    // std::cout << "ONNX DEBUG: No valid detections found" << std::endl;
     return detections;
   }
 
@@ -456,7 +554,7 @@ std::vector<Detection> ONNXBackend::postProcessPose(
   std::vector<int> indices;
   cv::dnn::NMSBoxes(int_boxes, confidences, conf_threshold, nms_threshold, indices);
 
-  std::cout << "ONNX DEBUG: " << indices.size() << " detections after NMS" << std::endl;
+  // std::cout << "ONNX DEBUG: " << indices.size() << " detections after NMS" << std::endl;
 
   for (int idx : indices) {
     Detection det;
@@ -474,6 +572,107 @@ std::vector<Detection> ONNXBackend::postProcessPose(
 std::vector<Detection> ONNXBackend::postProcessDetection(
   const float * output,
   const std::vector<int64_t> & output_shape,
+  cv::Size /*input_size*/,
+  cv::Size original_size,
+  cv::Size2f scale_factors,
+  cv::Point2f padding,
+  float conf_threshold,
+  float nms_threshold)
+{
+  std::vector<Detection> detections;
+  if (output_shape.size() != 3) {return detections;}
+
+  int64_t dim1 = output_shape[1];
+  int64_t dim2 = output_shape[2];
+
+  // Detect transposed format [1, features, anchors] vs [1, anchors, features]
+  int64_t features, num_anchors;
+  bool transposed;
+  if (dim1 < dim2) {
+    features = dim1; num_anchors = dim2; transposed = true;
+  } else {
+    features = dim2; num_anchors = dim1; transposed = false;
+  }
+
+  int num_classes = static_cast<int>(features) - 4;
+  if (num_classes <= 0) {return detections;}
+
+  float scale_x = scale_factors.width;
+  float scale_y = scale_factors.height;
+  float pad_x = padding.x;
+  float pad_y = padding.y;
+
+  std::vector<cv::Rect2f> boxes;
+  std::vector<float> confidences;
+  std::vector<int> class_ids;
+
+  for (int64_t i = 0; i < num_anchors; ++i) {
+    float cx, cy, w, h;
+    float max_score = 0.0f;
+    int class_id = 0;
+
+    if (transposed) {
+      cx = output[0 * num_anchors + i];
+      cy = output[1 * num_anchors + i];
+      w  = output[2 * num_anchors + i];
+      h  = output[3 * num_anchors + i];
+      for (int c = 0; c < num_classes; ++c) {
+        float s = output[(4 + c) * num_anchors + i];
+        if (s > max_score) {max_score = s; class_id = c;}
+      }
+    } else {
+      const float * a = output + i * features;
+      cx = a[0]; cy = a[1]; w = a[2]; h = a[3];
+      for (int c = 0; c < num_classes; ++c) {
+        if (a[4 + c] > max_score) {max_score = a[4 + c]; class_id = c;}
+      }
+    }
+
+    if (max_score < conf_threshold) {continue;}
+
+    float x1 = (cx - pad_x) / scale_x - w / (2.0f * scale_x);
+    float y1 = (cy - pad_y) / scale_y - h / (2.0f * scale_y);
+    float x2 = x1 + w / scale_x;
+    float y2 = y1 + h / scale_y;
+
+    if (x1 >= 0 && y1 >= 0 && x2 > x1 && y2 > y1 &&
+      x1 < original_size.width && y1 < original_size.height)
+    {
+      boxes.push_back(cv::Rect2f(x1, y1, x2 - x1, y2 - y1));
+      confidences.push_back(max_score);
+      class_ids.push_back(class_id);
+    }
+  }
+
+  if (boxes.empty()) {return detections;}
+
+  std::vector<cv::Rect> int_boxes;
+  for (const auto & b : boxes) {
+    int_boxes.push_back(
+      cv::Rect(
+        static_cast<int>(b.x), static_cast<int>(b.y),
+        static_cast<int>(b.width), static_cast<int>(b.height)));
+  }
+
+  std::vector<int> indices;
+  cv::dnn::NMSBoxes(int_boxes, confidences, conf_threshold, nms_threshold, indices);
+
+  for (int idx : indices) {
+    Detection det;
+    det.bbox = boxes[idx];
+    det.confidence = confidences[idx];
+    det.class_id = class_ids[idx];
+    detections.push_back(det);
+  }
+
+  return detections;
+}
+
+std::vector<Detection> ONNXBackend::postProcessSegmentation(
+  const float * output,
+  const std::vector<int64_t> & output_shape,
+  const float * proto_output,
+  const std::vector<int64_t> & proto_shape,
   cv::Size input_size,
   cv::Size original_size,
   cv::Size2f scale_factors,
@@ -481,21 +680,155 @@ std::vector<Detection> ONNXBackend::postProcessDetection(
   float conf_threshold,
   float nms_threshold)
 {
-  // Suppress unused parameter warnings
-  (void)output;
-  (void)output_shape;
-  (void)input_size;
-  (void)original_size;
-  (void)scale_factors;
-  (void)padding;
-  (void)conf_threshold;
-  (void)nms_threshold;
-
-  // Standard YOLO detection post-processing with corrected coordinate transformation
   std::vector<Detection> detections;
+  if (output_shape.size() != 3) {return detections;}
 
-  // Implementation would be similar to pose processing but without keypoints
-  // For now, return empty for detection models
+  constexpr int MASK_COEFS = 32;
+  int64_t dim1 = output_shape[1];
+  int64_t dim2 = output_shape[2];
+
+  int64_t features, num_anchors;
+  bool transposed;
+  if (dim1 < dim2) {
+    features = dim1; num_anchors = dim2; transposed = true;
+  } else {
+    features = dim2; num_anchors = dim1; transposed = false;
+  }
+
+  int num_classes = static_cast<int>(features) - 4 - MASK_COEFS;
+  if (num_classes <= 0) {return detections;}
+
+  float scale_x = scale_factors.width;
+  float scale_y = scale_factors.height;
+  float pad_x = padding.x;
+  float pad_y = padding.y;
+
+  std::vector<cv::Rect2f> boxes;
+  std::vector<float> confidences;
+  std::vector<int> class_ids;
+  std::vector<std::vector<float>> mask_coefs_list;
+
+  for (int64_t i = 0; i < num_anchors; ++i) {
+    float cx, cy, w, h;
+    float max_score = 0.0f;
+    int class_id = 0;
+    std::vector<float> coefs(MASK_COEFS);
+
+    if (transposed) {
+      cx = output[0 * num_anchors + i];
+      cy = output[1 * num_anchors + i];
+      w  = output[2 * num_anchors + i];
+      h  = output[3 * num_anchors + i];
+      for (int c = 0; c < num_classes; ++c) {
+        float s = output[(4 + c) * num_anchors + i];
+        if (s > max_score) {max_score = s; class_id = c;}
+      }
+      for (int m = 0; m < MASK_COEFS; ++m) {
+        coefs[m] = output[(4 + num_classes + m) * num_anchors + i];
+      }
+    } else {
+      const float * a = output + i * features;
+      cx = a[0]; cy = a[1]; w = a[2]; h = a[3];
+      for (int c = 0; c < num_classes; ++c) {
+        if (a[4 + c] > max_score) {max_score = a[4 + c]; class_id = c;}
+      }
+      for (int m = 0; m < MASK_COEFS; ++m) {
+        coefs[m] = a[4 + num_classes + m];
+      }
+    }
+
+    if (max_score < conf_threshold) {continue;}
+
+    float x1 = (cx - pad_x) / scale_x - w / (2.0f * scale_x);
+    float y1 = (cy - pad_y) / scale_y - h / (2.0f * scale_y);
+    float x2 = x1 + w / scale_x;
+    float y2 = y1 + h / scale_y;
+
+    if (x1 >= 0 && y1 >= 0 && x2 > x1 && y2 > y1 &&
+      x1 < original_size.width && y1 < original_size.height)
+    {
+      boxes.push_back(cv::Rect2f(x1, y1, x2 - x1, y2 - y1));
+      confidences.push_back(max_score);
+      class_ids.push_back(class_id);
+      mask_coefs_list.push_back(coefs);
+    }
+  }
+
+  if (boxes.empty()) {return detections;}
+
+  std::vector<cv::Rect> int_boxes;
+  for (const auto & b : boxes) {
+    int_boxes.push_back(
+      cv::Rect(
+        static_cast<int>(b.x), static_cast<int>(b.y),
+        static_cast<int>(b.width), static_cast<int>(b.height)));
+  }
+
+  std::vector<int> indices;
+  cv::dnn::NMSBoxes(int_boxes, confidences, conf_threshold, nms_threshold, indices);
+
+  // Determine prototype dimensions for mask computation
+  int H_proto = 0, W_proto = 0;
+  if (proto_output && proto_shape.size() == 4) {
+    H_proto = static_cast<int>(proto_shape[2]);
+    W_proto = static_cast<int>(proto_shape[3]);
+  }
+
+  for (int idx : indices) {
+    Detection det;
+    det.bbox = boxes[idx];
+    det.confidence = confidences[idx];
+    det.class_id = class_ids[idx];
+
+    // Compute instance mask from prototype if available
+    if (proto_output && H_proto > 0 && W_proto > 0) {
+      const std::vector<float> & coefs = mask_coefs_list[idx];
+
+      // mask = sigmoid(coefs @ protos.reshape(32, H*W)).reshape(H, W)
+      cv::Mat mask(H_proto, W_proto, CV_32F, cv::Scalar(0.0f));
+      for (int m = 0; m < MASK_COEFS; ++m) {
+        const float * proto_ch = proto_output + m * H_proto * W_proto;
+        cv::Mat proto_mat(H_proto, W_proto, CV_32F, const_cast<float *>(proto_ch));
+        mask += coefs[m] * proto_mat;
+      }
+      // Sigmoid
+      cv::exp(-mask, mask);
+      mask = 1.0f / (1.0f + mask);
+
+      // Scale to letterboxed input size, crop padding, then resize to original.
+      // Prototype is in letterboxed input space — must remove letterbox padding
+      // before mapping to original image coordinates.
+      cv::resize(mask, mask, input_size, 0, 0, cv::INTER_LINEAR);
+
+      int crop_x = static_cast<int>(padding.x);
+      int crop_y = static_cast<int>(padding.y);
+      int crop_w = input_size.width - 2 * crop_x;
+      int crop_h = input_size.height - 2 * crop_y;
+      if (crop_w > 0 && crop_h > 0) {
+        mask = mask(cv::Rect(crop_x, crop_y, crop_w, crop_h));
+      }
+      cv::resize(mask, mask, original_size, 0, 0, cv::INTER_LINEAR);
+
+      // Crop mask to bbox region
+      cv::Mat bbox_mask = cv::Mat::zeros(original_size, CV_32F);
+      cv::Rect bbox_rect(
+        static_cast<int>(std::max(0.0f, det.bbox.x)),
+        static_cast<int>(std::max(0.0f, det.bbox.y)),
+        static_cast<int>(std::min(static_cast<float>(original_size.width) - det.bbox.x,
+        det.bbox.width)),
+        static_cast<int>(std::min(static_cast<float>(original_size.height) - det.bbox.y,
+        det.bbox.height)));
+      if (bbox_rect.width > 0 && bbox_rect.height > 0) {
+        mask(bbox_rect).copyTo(bbox_mask(bbox_rect));
+      }
+
+      // Threshold to binary mask
+      cv::threshold(bbox_mask, bbox_mask, 0.5, 255.0, cv::THRESH_BINARY);
+      bbox_mask.convertTo(det.mask, CV_8U);
+    }
+
+    detections.push_back(det);
+  }
 
   return detections;
 }

@@ -30,10 +30,48 @@
 
 
 # from ament_index_python.packages import get_package_share_directory
+import yaml
 from launch import LaunchDescription
-from launch.actions import DeclareLaunchArgument
+from launch.actions import DeclareLaunchArgument, OpaqueFunction
 from launch.substitutions import LaunchConfiguration
 from launch_ros.actions import Node
+
+
+def launch_setup(context, *args, **kwargs):
+    class_names_str = LaunchConfiguration('class_names').perform(context)
+    try:
+        class_names = yaml.safe_load(class_names_str)
+        if not isinstance(class_names, list):
+            class_names = []
+    except Exception:
+        class_names = []
+
+    yolo_node = Node(
+        package='yolo_inference_cpp',
+        executable='yolo_inference_cpp_node',
+        name='yolo_inference_node',
+        parameters=[{
+            'model_path': LaunchConfiguration('model_path'),
+            'task': LaunchConfiguration('task'),
+            'input_size': LaunchConfiguration('input_size'),
+            'input_width': LaunchConfiguration('input_width'),
+            'input_height': LaunchConfiguration('input_height'),
+            'confidence_threshold': LaunchConfiguration('confidence_threshold'),
+            'keypoint_threshold': LaunchConfiguration('keypoint_threshold'),
+            'publish_visualization': LaunchConfiguration('publish_visualization'),
+            'draw_bboxes': LaunchConfiguration('draw_bboxes'),
+            'enable_profiling': LaunchConfiguration('enable_profiling'),
+            'input_topic': LaunchConfiguration('input_topic'),
+            'output_topic': '/yolo/detections',
+            'output_image_topic': '/yolo/result_image',
+            'performance_topic': '/yolo/performance',
+            'class_names': class_names,
+        }],
+        output='screen',
+        emulate_tty=True
+    )
+    return [yolo_node]
+
 
 def generate_launch_description():
     # Get package directory
@@ -56,6 +94,18 @@ def generate_launch_description():
         'input_size',
         default_value='640',
         description='Input image size (square)'
+    )
+
+    input_width_arg = DeclareLaunchArgument(
+        'input_width',
+        default_value='-1',
+        description='Input image width (overrides input_size if > 0)'
+    )
+
+    input_height_arg = DeclareLaunchArgument(
+        'input_height',
+        default_value='-1',
+        description='Input image height (overrides input_size if > 0)'
     )
 
     confidence_threshold_arg = DeclareLaunchArgument(
@@ -88,36 +138,30 @@ def generate_launch_description():
         description='Input compressed image topic'
     )
 
-    # YOLO inference node
-    yolo_node = Node(
-        package='yolo_inference_cpp',
-        executable='yolo_inference_node',
-        name='yolo_inference_node',
-        parameters=[{
-            'model_path': LaunchConfiguration('model_path'),
-            'task': LaunchConfiguration('task'),
-            'input_size': LaunchConfiguration('input_size'),
-            'confidence_threshold': LaunchConfiguration('confidence_threshold'),
-            'keypoint_threshold': LaunchConfiguration('keypoint_threshold'),
-            'publish_visualization': LaunchConfiguration('publish_visualization'),
-            'enable_profiling': LaunchConfiguration('enable_profiling'),
-            'input_topic': LaunchConfiguration('input_topic'),
-            'output_topic': '/yolo/detections',
-            'output_image_topic': '/yolo/result_image',
-            'performance_topic': '/yolo/performance'
-        }],
-        output='screen',
-        emulate_tty=True
+    draw_bboxes_arg = DeclareLaunchArgument(
+        'draw_bboxes',
+        default_value='true',
+        description='Draw bounding boxes in visualization'
+    )
+
+    class_names_arg = DeclareLaunchArgument(
+        'class_names',
+        default_value='[]',
+        description='List of class names, e.g. "[\'person\', \'car\']"'
     )
 
     return LaunchDescription([
         model_path_arg,
         task_arg,
         input_size_arg,
+        input_width_arg,
+        input_height_arg,
         confidence_threshold_arg,
         keypoint_threshold_arg,
         publish_visualization_arg,
         enable_profiling_arg,
         input_topic_arg,
-        yolo_node
+        draw_bboxes_arg,
+        class_names_arg,
+        OpaqueFunction(function=launch_setup),
     ])
