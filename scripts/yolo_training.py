@@ -62,7 +62,14 @@ def parse_arguments():
     )
 
     parser.add_argument(
-        "--lr",
+        "--lr0",
+        type=float,
+        default=0.01,
+        help="Learning rate"
+    )
+
+    parser.add_argument(
+        "--lrf",
         type=float,
         default=0.01,
         help="Learning rate"
@@ -73,6 +80,35 @@ def parse_arguments():
         type=int,
         default=100,
         help="Epochs to wait for no observable improvement for early stopping"
+    )
+
+    parser.add_argument(
+        "--optimizer",
+        type=str,
+        default="auto",
+        choices=["SGD", "Adam", "AdamW", "NAdam", "RAdam", "RMSProp", "auto"],
+        help="Optimizer to use"
+    )
+
+    parser.add_argument(
+        "--seed",
+        type=int,
+        default=0,
+        help="Random seed for reproducibility"
+    )
+
+    parser.add_argument(
+        "--momentum",
+        type=float,
+        default=0.937,
+        help="Optimizer momentum"
+    )
+
+    parser.add_argument(
+        "--weight-decay",
+        type=float,
+        default=0.0005,
+        help="Weight decay (L2 regularization)"
     )
 
     # Output and logging
@@ -249,6 +285,42 @@ def parse_arguments():
         help="Copy-paste augmentation (probability)"
     )
 
+    # Loss parameters
+    parser.add_argument(
+        "--box-loss",
+        type=float,
+        default=7.5,
+        help="Box loss gain"
+    )
+
+    parser.add_argument(
+        "--cls-loss",
+        type=float,
+        default=0.5,
+        help="Class loss gain"
+    )
+
+    parser.add_argument(
+        "--dfl-loss",
+        type=float,
+        default=1.5,
+        help="Distribution Focal Loss gain"
+    )
+
+    parser.add_argument(
+        "--pose-loss",
+        type=float,
+        default=12.0,
+        help="Pose loss gain"
+    )
+
+    parser.add_argument(
+        "--kobj-loss",
+        type=float,
+        default=2.0,
+        help="Objectness loss gain"
+    )
+
     # Advanced options
     parser.add_argument(
         "--resume",
@@ -332,7 +404,8 @@ def validate_arguments(args):
             if scale < 32:
                 raise ValueError(f"Validation scale {scale} must be at least 32")
             if scale % 32 != 0:
-                print(f"Warning: Validation scale {scale} is not a multiple of 32, will be rounded")
+                print(
+                    f"Warning: Validation scale {scale} is not a multiple of 32, will be rounded")
 
     # Check GPU availability if device not specified
     if not args.device:
@@ -379,7 +452,7 @@ def main():
     print(f"Epochs: {args.epochs}")
     print(f"Batch Size: {args.batch_size}")
     print(f"Image Size: {args.imgsz}")
-    print(f"Learning Rate: {args.lr}")
+    print(f"Learning Rate: {args.lr0}")
     print(f"Device: {args.device or 'auto'}")
     print(f"Project: {args.project}")
     print(f"Name: {args.name}")
@@ -421,8 +494,13 @@ def main():
         "epochs": args.epochs,
         "batch": args.batch_size,
         "imgsz": args.imgsz,
-        "lr0": args.lr,
+        "lr0": args.lr0,
+        "lrf": args.lrf,
         "patience": args.patience,
+        "optimizer": args.optimizer,
+        "seed": args.seed,
+        "momentum": args.momentum,
+        "weight_decay": args.weight_decay,
 
         # Output and logging
         "project": args.project,
@@ -449,6 +527,13 @@ def main():
         "mosaic": args.mosaic,
         "mixup": args.mixup,
         "copy_paste": args.copy_paste,
+
+        # Loss parameters
+        "box": args.box_loss,
+        "cls": args.cls_loss,
+        "dfl": args.dfl_loss,
+        "pose": args.pose_loss,
+        "kobj": args.kobj_loss,
 
         # Advanced options
         "pretrained": args.pretrained,
@@ -693,7 +778,8 @@ def main():
         print(f"\n[Epoch {trainer.epoch + 1}] Running multi-scale validation...")
 
         # Use the just-saved weights
-        ckpt_path = trainer.last if getattr(trainer, "last", None) and trainer.last.exists() else trainer.best
+        ckpt_path = trainer.last if getattr(
+            trainer, "last", None) and trainer.last.exists() else trainer.best
 
         try:
             step = trainer.epoch + 1
@@ -795,16 +881,19 @@ def main():
                                         sample_images["tags"][scale]) else f"pred@{scale}/sample_{i:02d}"
 
                                     if tb_writer["writer"]:
-                                        tb_writer["writer"].add_image(tag, im, step, dataformats="HWC")
+                                        tb_writer["writer"].add_image(
+                                            tag, im, step, dataformats="HWC")
 
                                     # Brief console summary
                                     n_detections = 0
                                     if getattr(res, "boxes", None) is not None:
-                                        n_detections = len(res.boxes) if res.boxes is not None else 0
+                                        n_detections = len(
+                                            res.boxes) if res.boxes is not None else 0
                                     # Don't print for every image to reduce clutter
 
                                 except Exception as e:
-                                    print(f"    → Sample prediction logging failed for image {i}: {e}")
+                                    print(
+                                        f"    → Sample prediction logging failed for image {i}: {e}")
 
                         except Exception as e:
                             print(f"    → Sample prediction failed: {e}")
@@ -834,7 +923,8 @@ def main():
         print("Multi-scale training enabled - image sizes will vary during training")
     if val_scales:
         print(f"Multi-scale validation will run at {val_scales}px every {args.val_every} epoch(s)")
-        print(f"TensorBoard will visualize {args.tb_samples} sample images with slider functionality")
+        print(
+            f"TensorBoard will visualize {args.tb_samples} sample images with slider functionality")
     print("TensorBoard logs will be saved alongside training results")
     print("You can monitor training with: tensorboard --logdir <project>/<name>/tensorboard")
     print("-" * 60)
@@ -856,7 +946,8 @@ def main():
                 if best_models[scale]["score"] > -1:
                     best_path = weights_dir / f"best_img{scale}.pt"
                     if best_path.exists():
-                        print(f"  {scale}px: {args.val_metric}={best_models[scale]['score']:.5f} → {best_path}")
+                        print(
+                            f"  {scale}px: {args.val_metric}={best_models[scale]['score']:.5f} → {best_path}")
 
         print("=" * 60)
 

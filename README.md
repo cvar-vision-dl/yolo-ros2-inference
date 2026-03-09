@@ -1,6 +1,15 @@
 # YOLO Inference C++ for ROS2
 
-High-performance YOLO inference implementation in C++ for ROS2, optimized for drone applications and real-time processing. Supports both TensorRT and ONNX Runtime backends with comprehensive profiling and memory management.
+High-performance **YOLO inference implementation in C++** for ROS2, optimized for robotics applications and real-time computer vision. This package provides a production-ready solution for deploying [Ultralytics](https://ultralytics.com/) YOLO models on edge devices and robotic systems.
+
+## Compatibility
+
+✅ **Fully compatible with [Ultralytics YOLO](https://docs.ultralytics.com/) models**, including:
+- **YOLOv8** (all variants: n/s/m/l/x for detect, pose, and segment tasks)
+- **YOLOv11** (all variants: n/s/m/l/x for detect, pose, and segment tasks)
+- Any future Ultralytics releases following the same export format
+
+Models trained with the Ultralytics framework can be directly exported to ONNX or TensorRT and deployed using this package with no modifications required.
 
 ## Features
 
@@ -9,14 +18,13 @@ High-performance YOLO inference implementation in C++ for ROS2, optimized for dr
 - **📊 Comprehensive Profiling**: Detailed timing analysis for all processing stages
 - **🎯 Multiple Tasks**: Pose detection, object detection, and segmentation support
 - **🔌 ROS2 Integration**: Native ROS2 Humble support with custom messages
-- **🐳 Container Ready**: Docker support for both Jetson and x86_64 platforms [not yet validated]
 - **⚡ Jetson Optimized**: Special optimizations for NVIDIA Jetson platforms
 
 ## Supported Platforms
 
-- **NVIDIA Jetson** (Xavier NX, Orin, AGX): Primary target for drone applications
+- **NVIDIA Jetson** (Xavier NX, Orin, AGX): Primary target for robotics applications
 - **x86_64 with NVIDIA GPU**: Development and testing
-- **ARM64**: General ARM64 support (limited testing)
+- **ARM64**: General ARM64 support (Not yet validated)
 
 ## Quick Start
 
@@ -36,7 +44,62 @@ chmod +x scripts/build_package.sh
 ./scripts/build_package.sh
 ```
 
-### 2. Model Training & Preparation
+### 2. Usage Examples
+
+> **Note**: This package is designed to work seamlessly with models trained using the [Ultralytics](https://github.com/ultralytics/ultralytics) framework. If you have already a trained model, check the preparation section below to export it to ONNX and/or TensorRT.
+
+**Basic Pose Detection**
+
+```bash
+ros2 launch yolo_inference_cpp yolo_pose.launch.py \
+    model_path:=models/yolo11n-pose.onnx \
+    confidence_threshold:=0.1 \
+    keypoint_threshold:=0.3 \
+    publish_visualization:=true \
+    input_topic:=/camera/image_raw/compressed \
+    input_size:=640 \
+    task:=pose
+```
+
+**High-Performance Edge Configuration**
+
+```bash
+ros2 launch yolo_inference_cpp yolo_tensorrt.launch.py \
+    model_path:=models/yolo11m-pose-jetson-fp16.engine \
+    confidence_threshold:=0.1 \
+    keypoint_threshold:=0.3 \
+    max_detections:=7 \
+    publish_visualization:=false \
+    enable_profiling:=true \
+    input_size:=640 \
+    task:=pose
+```
+
+**Multi-Model Detection**
+
+```bash
+# Object detection
+ros2 launch yolo_inference_cpp yolo_pose.launch.py \
+    model_path:=yolo11n.onnx \
+    task:=detect \
+    confidence_threshold:=0.6
+
+# Segmentation
+ros2 launch yolo_inference_cpp yolo_pose.launch.py \
+    model_path:=yolo11n-seg.onnx \
+    task:=segment \
+    confidence_threshold:=0.5
+
+# Pose
+ros2 launch yolo_inference_cpp yolo_pose.launch.py \
+    model_path:=yolo11n-pose.onnx \
+    task:=pose \
+    confidence_threshold:=0.5
+```
+
+### 3. [optional] Model Training & Preparation
+
+> **Note**: This package is designed to work seamlessly with models trained using the [Ultralytics](https://github.com/ultralytics/ultralytics) framework. Visit their [documentation](https://docs.ultralytics.com/) for detailed training guides and best practices.
 
 **Model Training**
 
@@ -64,7 +127,62 @@ yolo11x-pose.pt
 3
 ```
 
-Use tensorboard to visualize training performance.
+Use tensorboard to visualize training performance. To log common metrics, execute this command:
+```
+yolo settings tensorboard=True
+```
+
+#### Training Script Parameters
+
+| Parameter | Type | Default | Possible Values | Description |
+|-----------|------|---------|-----------------|-------------|
+| `--data` | string | *required* | Path to YAML file | Path to dataset YAML file |
+| `--model` | string | `yolo11n.pt` | `yolo11n.pt`, `yolo11s.pt`, `yolo11m.pt`, `yolo11l.pt`, `yolo11x.pt` | Model to use for training |
+| `--epochs` | int | `100` | Any positive integer | Number of epochs to train |
+| `--batch-size` | int | `16` | Any positive integer | Batch size for training |
+| `--imgsz` | int | `320` | Any positive integer | Image size for training |
+| `--lr0` | float | `0.01` | Any positive float | Initial learning rate |
+| `--lrf` | float | `0.01` | Any positive float | Final learning rate (as fraction of lr0) |
+| `--patience` | int | `100` | Any positive integer | Epochs to wait for no improvement (early stopping) |
+| `--optimizer` | string | `auto` | `SGD`, `Adam`, `AdamW`, `NAdam`, `RAdam`, `RMSProp`, `auto` | Optimizer to use |
+| `--seed` | int | `0` | Any integer | Random seed for reproducibility |
+| `--momentum` | float | `0.937` | 0.0 - 1.0 | Optimizer momentum |
+| `--weight-decay` | float | `0.0005` | Any positive float | Weight decay (L2 regularization) |
+| `--project` | string | `runs/train` | Any path | Project directory for outputs |
+| `--name` | string | `exp` | Any string | Experiment name |
+| `--save-period` | int | `1` | Any positive integer | Save checkpoint every N epochs |
+| `--val-scales` | int[] | `None` | List of integers | Multiple validation sizes (e.g., `320 640 832`) |
+| `--val-every` | int | `1` | Any positive integer | Run multi-scale validation every N epochs |
+| `--val-split` | string | `val` | `val`, `test`, `train` | Dataset split for multi-scale validation |
+| `--val-metric` | string | `map50` | `map`, `map50` | Metric to track for best models at each scale |
+| `--override-best` | flag | `False` | `True`/`False` | Overwrite Ultralytics best.pt when alt metric improves |
+| `--tb-samples` | int | `3` | Any positive integer | Number of sample images for TensorBoard |
+| `--tb-sample-images` | string[] | `None` | List of image paths | Specific images for TensorBoard visualization |
+| `--multiscale` | flag | `False` | `True`/`False` | Enable multi-scale training (0.5x-1.5x range) |
+| `--multiscale-range` | float | `0.5` | Any float | **DEPRECATED**: YOLO uses fixed 0.5x-1.5x range |
+| `--multiscale-min` | int | `None` | Any integer | **DEPRECATED**: YOLO uses fixed 0.5x-1.5x range |
+| `--multiscale-max` | int | `None` | Any integer | **DEPRECATED**: YOLO uses fixed 0.5x-1.5x range |
+| `--device` | string | `""` (auto) | `cuda:0`, `cpu`, etc. | Device to use (empty for auto-detection) |
+| `--workers` | int | `8` | Any positive integer | Number of dataloader workers |
+| `--hsv-h` | float | `0.015` | 0.0 - 1.0 | HSV-Hue augmentation (fraction) |
+| `--hsv-s` | float | `0.7` | 0.0 - 1.0 | HSV-Saturation augmentation (fraction) |
+| `--hsv-v` | float | `0.4` | 0.0 - 1.0 | HSV-Value augmentation (fraction) |
+| `--degrees` | float | `40` | 0.0 - 360.0 | Rotation augmentation (degrees) |
+| `--translate` | float | `0.1` | 0.0 - 1.0 | Translation augmentation (fraction) |
+| `--scale` | float | `0.9` | 0.0 - 1.0+ | Scale augmentation (fraction) |
+| `--shear` | float | `15` | Any float | Shear augmentation (degrees) |
+| `--perspective` | float | `0.0004` | 0.0 - 1.0 | Perspective augmentation (fraction) |
+| `--flipud` | float | `0.5` | 0.0 - 1.0 | Vertical flip augmentation (probability) |
+| `--fliplr` | float | `0.5` | 0.0 - 1.0 | Horizontal flip augmentation (probability) |
+| `--mosaic` | float | `0.9` | 0.0 - 1.0 | Mosaic augmentation (probability) |
+| `--mixup` | float | `0.5` | 0.0 - 1.0 | MixUp augmentation (probability) |
+| `--copy-paste` | float | `0.0` | 0.0 - 1.0 | Copy-paste augmentation (probability) |
+| `--resume` | string | `""` | Path to checkpoint | Resume training from checkpoint |
+| `--pretrained` | flag | `False` | `True`/`False` | Use pretrained weights |
+| `--freeze` | int | `0` | Any non-negative integer | Number of layers to freeze (0 = no freezing) |
+| `--cache` | flag | `False` | `True`/`False` | Cache images for faster training |
+| `--amp` | flag | `False` | `True`/`False` | Use Automatic Mixed Precision training |
+| `--plots` | flag | `True` | `True`/`False` | Generate training plots |
 
 **Model Distillation**
 
@@ -105,6 +223,12 @@ Use tensorboard to visualize training performance.
 
 **Batch Export to ONNX and TensorRT**
 
+For maximum performance on Jetson:
+
+1. **Use FP16 precision**: Reduces memory usage and improves speed
+2. **Optimize workspace size**: Balance between speed and memory
+3. **Build platform-specific engines**: Jetson engines won't work on desktop
+
 Convert your YOLO model to the appropriate format:
 
 ```
@@ -138,19 +262,6 @@ pose
 ```
 
 After execution, feel free to open the generated `.html` files to visualize interactively every model performance.
-
-### 3. Launch the Node
-
-```bash
-# Source the workspace
-source ~/ros2_ws/install/setup.bash
-
-# ONNX Runtime (cross-platform)
-ros2 launch yolo_inference_cpp yolo_pose.launch.py model_path:=yolo11n-pose.onnx
-
-# TensorRT (high performance)
-ros2 launch yolo_inference_cpp yolo_tensorrt.launch.py model_path:=yolo11n-pose-fp16.engine
-```
 
 ### 4. Test with Sample Data
 
@@ -211,7 +322,6 @@ ros2 launch yolo_inference_cpp gatenet.launch.py \
     model_path:=gatenet.onnx \
     input_topic:=/camera/image_raw/compressed
 ```
-
 ## Configuration
 
 ### Launch Parameters
@@ -281,59 +391,6 @@ int32 detections_count
 float64 fps
 ```
 
-## Docker Deployment
-
-### Jetson Deployment
-
-```bash
-# Build Jetson image
-docker build -f docker/Dockerfile.jetson -t yolo_inference:jetson .
-
-# Run with models volume
-docker run --runtime nvidia --rm -it \
-    --network host \
-    -v $(pwd)/models:/models:ro \
-    yolo_inference:jetson \
-    ros2 launch yolo_inference_cpp yolo_tensorrt.launch.py \
-    model_path:=/models/yolo11n-pose-jetson-fp16.engine
-```
-
-### Desktop Development
-
-```bash
-# Build desktop image
-docker build -f docker/Dockerfile.x86_64 -t yolo_inference:desktop .
-
-# Run with visualization
-docker run --runtime nvidia --rm -it \
-    --network host \
-    -e DISPLAY=$DISPLAY \
-    -v /tmp/.X11-unix:/tmp/.X11-unix:rw \
-    -v $(pwd)/models:/models:ro \
-    yolo_inference:desktop \
-    ros2 launch yolo_inference_cpp yolo_pose.launch.py \
-    model_path:=/models/yolo11n-pose.onnx \
-    publish_visualization:=true
-```
-
-## Performance Optimization
-
-### TensorRT Optimization
-
-For maximum performance on Jetson:
-
-1. **Use FP16 precision**: Reduces memory usage and improves speed
-2. **Optimize workspace size**: Balance between speed and memory
-3. **Build platform-specific engines**: Jetson engines won't work on desktop
-
-```bash
-# Build Jetson-optimized engine
-python3 scripts/convert_model.py yolo11n-pose.pt \
-    --format tensorrt \
-    --precision fp16 \
-    --workspace-size 2  # GB, adjust based on available memory
-```
-
 ### Profiling and Monitoring
 
 Enable profiling to monitor performance:
@@ -351,14 +408,7 @@ htop             # CPU usage
 
 ### Common Issues
 
-**1. TensorRT Engine Compatibility**
-```bash
-# Error: Engine built on different platform
-# Solution: Rebuild engine on target platform
-python3 scripts/convert_model.py model.pt --format tensorrt --precision fp16
-```
-
-**2. CUDA Out of Memory**
+**1. CUDA Out of Memory**
 ```bash
 # Error: CUDA out of memory during inference
 # Solutions:
@@ -367,7 +417,7 @@ python3 scripts/convert_model.py model.pt --format tensorrt --precision fp16
 # - Reduce max detections: max_detections:=5
 ```
 
-**3. Low FPS Performance**
+**2. Low FPS Performance**
 ```bash
 # Check GPU utilization
 nvidia-smi
@@ -376,10 +426,9 @@ nvidia-smi
 publish_visualization:=false
 
 # Use TensorRT instead of ONNX
-# Convert model: python3 scripts/convert_model.py model.pt --format tensorrt
 ```
 
-**4. Missing Dependencies**
+**3. Missing Dependencies**
 ```bash
 # Reinstall dependencies
 ./scripts/install_dependencies.sh
@@ -453,6 +502,10 @@ python3 tests/test_inference.py
 - **Issues**: Report bugs and request features via GitHub Issues
 - **Discussions**: Ask questions and share experiences in GitHub Discussions
 - **Documentation**: Additional documentation available in the `docs/` directory
+
+## Keywords
+
+`YOLO` `YOLOv8` `YOLOv11` `Ultralytics` `ROS2` `C++` `TensorRT` `ONNX` `pose estimation` `object detection` `instance segmentation` `edge AI` `Jetson` `drone` `embedded` `UAV` `autonomous systems` `real-time inference` `computer vision` `robotics`
 
 ## Authors
 Alejandro Rodríguez-Ramos [alejandro.dosr@gmail.com]
