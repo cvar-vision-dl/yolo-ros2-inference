@@ -92,6 +92,7 @@ public:
   virtual bool isInitialized() const = 0;
   virtual ModelFormat getFormat() const = 0;
   virtual TaskType getTask() const = 0;
+  virtual void setClassNames(const std::vector<std::string> & names) {(void)names;}
 };
 
 std::unique_ptr<InferenceBackend> createInferenceBackend(const std::string & model_path);

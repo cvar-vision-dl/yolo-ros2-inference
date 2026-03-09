@@ -104,6 +104,7 @@ private:
   double keypoint_threshold_;
   int max_detections_;
   bool publish_visualization_;
+  bool draw_bboxes_;
   bool enable_profiling_;
 
   std::string input_topic_;
@@ -124,6 +125,7 @@ private:
   // Performance tracking
   int frame_count_;
   double total_time_;
+  double last_fps_;
   std::chrono::steady_clock::time_point last_log_time_;
 };  // class YOLOInterface
 

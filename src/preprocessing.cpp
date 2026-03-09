@@ -51,36 +51,31 @@ cv::Mat Preprocessor::preprocess(
   // Task-aware preprocessing
   cv::Mat padded;
 
-  // YOLO tasks: aspect-ratio preserving resize with letterbox padding
-  if (task == TaskType::POSE || task == TaskType::DETECT || task == TaskType::SEGMENT) {
-    // Calculate scale factor to maintain aspect ratio
+  if (task == TaskType::POSE) {
+    // POSE: letterbox (aspect-ratio preserving resize + padding)
     float scale = std::min(
       static_cast<float>(target_size) / input.cols,
       static_cast<float>(target_size) / input.rows);
 
     scale_factors_ = cv::Size2f(scale, scale);
 
-    // Calculate new size after scaling
     int new_width = static_cast<int>(input.cols * scale);
     int new_height = static_cast<int>(input.rows * scale);
 
-    // Resize the image maintaining aspect ratio
     cv::Mat resized;
     cv::resize(input, resized, cv::Size(new_width, new_height), 0, 0, cv::INTER_LINEAR);
 
-    // Calculate padding to reach target size
     int pad_x = (target_size - new_width) / 2;
     int pad_y = (target_size - new_height) / 2;
     padding_ = cv::Point2f(static_cast<float>(pad_x), static_cast<float>(pad_y));
 
-    // Create output image with padding
     cv::copyMakeBorder(
       resized, padded,
       pad_y, target_size - new_height - pad_y,
       pad_x, target_size - new_width - pad_x,
       cv::BORDER_CONSTANT, cv::Scalar(114, 114, 114));
   } else {
-    // GateNet: Direct resize (stretch to fit), no aspect ratio preservation
+    // DETECT, SEGMENT, GATENET: direct resize (stretch to fit)
     scale_factors_ = cv::Size2f(
       static_cast<float>(target_size) / input.cols,
       static_cast<float>(target_size) / input.rows);

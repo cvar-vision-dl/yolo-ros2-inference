@@ -64,6 +64,7 @@ public:
   bool isInitialized() const override {return initialized_;}
   ModelFormat getFormat() const override {return ModelFormat::ONNX;}
   TaskType getTask() const override {return task_type_;}
+  void setClassNames(const std::vector<std::string> & names) override {class_names_ = names;}
 
 private:
   std::vector<Detection> postProcessPose(
@@ -80,6 +81,18 @@ private:
   std::vector<Detection> postProcessDetection(
     const float * output,
     const std::vector<int64_t> & output_shape,
+    cv::Size input_size,
+    cv::Size original_size,
+    cv::Size2f scale_factors,
+    cv::Point2f padding,
+    float conf_threshold,
+    float nms_threshold);
+
+  std::vector<Detection> postProcessSegmentation(
+    const float * output,
+    const std::vector<int64_t> & output_shape,
+    const float * proto_output,
+    const std::vector<int64_t> & proto_shape,
     cv::Size input_size,
     cv::Size original_size,
     cv::Size2f scale_factors,
