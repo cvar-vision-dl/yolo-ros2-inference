@@ -2,6 +2,8 @@
 
 High-performance **YOLO inference implementation in C++** for ROS2, optimized for robotics applications and real-time computer vision. This package provides a production-ready solution for deploying [Ultralytics](https://ultralytics.com/) YOLO models on edge devices and robotic systems.
 
+![yolo_cpp_workspace_gif](https://github.com/user-attachments/assets/750ed7c3-a30e-49a4-b2ec-7f87ff9d15fd)
+
 ## Compatibility
 
 Compatible with [Ultralytics YOLO](https://docs.ultralytics.com/) models, including:
