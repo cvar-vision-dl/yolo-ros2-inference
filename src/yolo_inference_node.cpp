@@ -49,7 +49,7 @@ public:
 
     // Create subscriber
     image_sub_ = this->create_subscription<sensor_msgs::msg::CompressedImage>(
-      input_topic, 10,
+      input_topic, rclcpp::SensorDataQoS(),
       std::bind(&YOLOInferenceNode::imageCallback, this, std::placeholders::_1));
   }
 

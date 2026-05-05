@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """
 YOLOv11 Training Script with Augmentations, Multi-Scale Training, and TensorBoard
 Usage: python train_yolov11.py --data path/to/dataset.yaml --model yolo11n.pt --epochs 100
@@ -14,6 +13,10 @@ from pathlib import Path
 from ultralytics import YOLO
 import torch
 from torch.utils.tensorboard import SummaryWriter
+
+from ultralytics import settings
+
+settings.update({"tensorboard": True})
 
 
 def parse_arguments():
@@ -482,6 +485,22 @@ def main():
     except Exception as e:
         print(f"Error loading model: {e}")
         return 1
+
+    import inspect
+
+    def print_loss_once(trainer):
+        if not hasattr(print_loss_once, "_printed"):
+            criterion = trainer.model.criterion
+            print("\n=== Loss criterion ===")
+            print(criterion)
+            print(f"\nClass: {type(criterion)}")
+            print(f"File:  {inspect.getfile(type(criterion))}")
+            # print(f"\n--- Source ---")
+            # print(inspect.getsource(type(criterion)))
+            print("======================\n")
+            print_loss_once._printed = True
+
+    model.add_callback("on_train_batch_end", print_loss_once)
 
     # Detect task type
     task_type = detect_task_type(model)
