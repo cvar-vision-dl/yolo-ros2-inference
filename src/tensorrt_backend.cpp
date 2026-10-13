@@ -286,27 +286,43 @@ InferenceResult TensorRTBackend::infer(
   // Preprocess image
   Preprocessor preprocessor;
   cv::Mat processed;
+  cv::Size2f scale_factors(1.0f, 1.0f);
+  cv::Point2f padding(0.0f, 0.0f);
+  float * input_host = static_cast<float *>(input_host_buffer_);
 
-  // Use non-square preprocessing if width and height are specified
-  if (input_width_ > 0 && input_height_ > 0) {
-    processed = preprocessor.preprocess(image, input_width_, input_height_, task_type_);
+  if (task_type_ == TaskType::POSE && image.type() == CV_8UC3 &&
+    image.cols == actual_width && image.rows == actual_height)
+  {
+    // Already the model's size, so the letterbox would only copy it: each channel goes straight
+    // into the input buffer instead, as the RGB planes scaled to [0, 1] the Preprocessor makes.
+    std::vector<cv::Mat> bgr;
+    cv::split(image, bgr);
+    const int plane = actual_width * actual_height;
+    for (int c = 0; c < 3; ++c) {
+      cv::Mat channel(actual_height, actual_width, CV_32F, input_host + c * plane);
+      bgr[2 - c].convertTo(channel, CV_32F, 1.0 / 255.0);
+    }
   } else {
-    processed = preprocessor.preprocess(image, input_size_, task_type_);
-  }
+    // Use non-square preprocessing if width and height are specified
+    if (input_width_ > 0 && input_height_ > 0) {
+      processed = preprocessor.preprocess(image, input_width_, input_height_, task_type_);
+    } else {
+      processed = preprocessor.preprocess(image, input_size_, task_type_);
+    }
 
-  // Store preprocessing info for coordinate transformation
-  cv::Size2f scale_factors = preprocessor.getScaleFactors();
-  cv::Point2f padding = preprocessor.getPadding();
+    // Store preprocessing info for coordinate transformation
+    scale_factors = preprocessor.getScaleFactors();
+    padding = preprocessor.getPadding();
+
+    // Copy data to host buffer
+    memcpy(input_host, processed.ptr<float>(), input_size_bytes_);
+  }
 
 //    std::cout << "TensorRT DEBUG: Preprocessing completed, processed size: "
 //              << processed.rows << "x" << processed.cols << std::endl;
 //    std::cout << "TensorRT DEBUG: Scale factors: " << scale_factors.width << ", "
 //              << scale_factors.height << std::endl;
 //    std::cout << "TensorRT DEBUG: Padding: " << padding.x << ", " << padding.y << std::endl;
-
-  // Copy data to host buffer
-  float * input_host = static_cast<float *>(input_host_buffer_);
-  memcpy(input_host, processed.ptr<float>(), input_size_bytes_);
 
   // Copy from host to device
   cudaMemcpyAsync(
@@ -345,6 +361,7 @@ InferenceResult TensorRTBackend::infer(
   auto end_time = std::chrono::high_resolution_clock::now();
   result.inference_time_ms = std::chrono::duration<double, std::milli>(
     end_time - start_time).count();
+  result.success = true;
 
 //    std::cout << "TensorRT DEBUG: Inference completed!" << std::endl;
 

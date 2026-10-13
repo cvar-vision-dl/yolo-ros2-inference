@@ -275,6 +275,7 @@ InferenceResult ONNXBackend::infer(
     auto end_time = std::chrono::high_resolution_clock::now();
     result.inference_time_ms = std::chrono::duration<double, std::milli>(
       end_time - start_time).count();
+    result.success = true;
 
     // Process output
     float * output_data = output_tensors[0].GetTensorMutableData<float>();

@@ -62,7 +62,7 @@ struct Detection
 
 struct InferenceResult
 {
-  bool success;
+  bool success = false;
   std::vector<Detection> detections;
   cv::Size input_size;
   cv::Size original_size;
