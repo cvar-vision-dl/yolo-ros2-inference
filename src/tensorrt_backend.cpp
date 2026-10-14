@@ -422,6 +422,7 @@ InferenceResult TensorRTBackend::infer(
         std::cerr << "Invalid GateNet output shape. Dims: [";
         for(int i=0; i<output_dims_.nbDims; i++) std::cerr << output_dims_.d[i] << " ";
         std::cerr << "]" << std::endl;
+        result.success = false;
     }
   } else {
     result.detections = postProcessDetection(

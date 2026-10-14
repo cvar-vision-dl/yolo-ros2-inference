@@ -322,6 +322,7 @@ InferenceResult ONNXBackend::infer(
           end_time - start_time).count();
       } else {
         std::cerr << "Invalid GateNet output shape" << std::endl;
+        result.success = false;
       }
     } else if (task_type_ == TaskType::SEGMENT) {
       // Check for prototype masks in second output tensor
