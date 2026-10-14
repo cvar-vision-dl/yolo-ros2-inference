@@ -10,3 +10,4 @@ rosbags/
 compile_commands.json
 COLCON_IGNORE
 CLAUDE.md
+include/yolo_inference_cpp/custom/*.hpp

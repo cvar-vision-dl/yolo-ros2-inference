@@ -10,6 +10,17 @@ if(CMAKE_COMPILER_IS_GNUCXX OR CMAKE_CXX_COMPILER_ID MATCHES "Clang")
   add_compile_options(-Wall -Wextra -Wpedantic -O3)
 endif()
 
+# set a define with the system env variable ROS_DISTRO
+set(ROS_DISTRO $ENV{ROS_DISTRO})
+message(STATUS "Detected ROS_DISTRO: ${ROS_DISTRO}")
+if(ROS_DISTRO STREQUAL "jazzy")
+  option(ROS_JAZZY "ROS Jazzy" ON)
+endif()
+configure_file(
+  "${PROJECT_SOURCE_DIR}/include/yolo_inference_cpp/custom/cv_bridge.hpp.in"
+  "${PROJECT_SOURCE_DIR}/include/yolo_inference_cpp/custom/cv_bridge.hpp"
+)
+
 # Find dependencies
 set(PROJECT_DEPENDENCIES
   ament_cmake
@@ -29,7 +40,6 @@ endforeach()
 
 # CUDA support
 find_package(CUDA REQUIRED)
-enable_language(CUDA)
 
 # TensorRT
 find_path(TENSORRT_INCLUDE_DIR NvInfer.h
@@ -214,6 +224,6 @@ endif()
 
 # Export libraries and targets for being used by other packages
 ament_export_targets(export_${PROJECT_NAME} HAS_LIBRARY_TARGET)
-ament_export_dependencies(${PROJECT_DEPENDENCIES})
+ament_export_dependencies(${PROJECT_DEPENDENCIES} Threads)
 
 ament_package()

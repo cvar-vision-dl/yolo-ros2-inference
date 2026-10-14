@@ -51,7 +51,7 @@
 #include <sensor_msgs/msg/compressed_image.hpp>
 #include <sensor_msgs/msg/image.hpp>
 #include <std_msgs/msg/string.hpp>
-#include <cv_bridge/cv_bridge.h>
+#include "yolo_inference_cpp/custom/cv_bridge.hpp"
 #include <opencv2/opencv.hpp>
 
 namespace yolo_inference
