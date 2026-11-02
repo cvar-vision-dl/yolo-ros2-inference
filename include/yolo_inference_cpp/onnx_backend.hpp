@@ -36,6 +36,7 @@
 #include <vector>
 
 #include "inference_backend.hpp"
+#include "pose_output.hpp"
 
 namespace yolo_inference
 {
@@ -69,7 +70,7 @@ public:
 private:
   std::vector<Detection> postProcessPose(
     const float * output,
-    const std::vector<int64_t> & output_shape,
+    const PoseOutputLayout & layout,
     cv::Size input_size,
     cv::Size original_size,
     cv::Size2f scale_factors,

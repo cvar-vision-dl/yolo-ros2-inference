@@ -36,6 +36,7 @@
 #include <vector>
 
 #include "inference_backend.hpp"
+#include "pose_output.hpp"
 
 namespace yolo_inference
 {
@@ -70,6 +71,7 @@ public:
   bool isInitialized() const override {return initialized_;}
   ModelFormat getFormat() const override {return ModelFormat::TENSORRT;}
   TaskType getTask() const override {return task_type_;}
+  void setClassNames(const std::vector<std::string> & names) override {class_names_ = names;}
 
 private:
   bool loadEngine(const std::string & engine_path);
@@ -88,6 +90,7 @@ private:
 
   std::vector<Detection> postProcessPose(
     float * output,
+    const PoseOutputLayout & layout,
     cv::Size input_size,
     cv::Size original_size,
     cv::Size2f scale_factors,
