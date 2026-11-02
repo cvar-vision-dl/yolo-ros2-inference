@@ -34,6 +34,7 @@
 
 #include "yolo_inference_cpp/tensorrt_backend.hpp"
 #include "yolo_inference_cpp/preprocessing.hpp"
+#include "yolo_inference_cpp/frame_edge.hpp"
 #include "yolo_inference_cpp/gatenet_postprocessing.hpp"
 
 namespace yolo_inference
@@ -369,15 +370,25 @@ InferenceResult TensorRTBackend::infer(
   float * output_host = static_cast<float *>(output_host_buffer_);
 
   if (task_type_ == TaskType::POSE) {
-    result.detections = postProcessPose(
-      output_host,
-      result.input_size,
-      result.original_size,
-      scale_factors,
-      padding,
-      conf_threshold,
-      nms_threshold,
-      keypoint_threshold);
+    std::string layout_error;
+    const auto layout = poseOutputLayout(
+      std::vector<int64_t>(output_dims_.d, output_dims_.d + std::max(output_dims_.nbDims, 0)),
+      static_cast<int>(class_names_.size()), layout_error);
+    if (layout) {
+      result.detections = postProcessPose(
+        output_host,
+        *layout,
+        result.input_size,
+        result.original_size,
+        scale_factors,
+        padding,
+        conf_threshold,
+        nms_threshold,
+        keypoint_threshold);
+    } else {
+      std::cerr << "Invalid pose output shape: " << layout_error << std::endl;
+      result.success = false;
+    }
   } else if (task_type_ == TaskType::GATENET) {
     // GateNet output format: [1, C, H, W] where C=24
     // Convert to vector of cv::Mat for post-processing
@@ -440,6 +451,7 @@ InferenceResult TensorRTBackend::infer(
 
 std::vector<Detection> TensorRTBackend::postProcessPose(
   float * output,
+  const PoseOutputLayout & layout,
   cv::Size input_size,
   cv::Size original_size,
   cv::Size2f scale_factors,
@@ -450,61 +462,12 @@ std::vector<Detection> TensorRTBackend::postProcessPose(
 {
   std::vector<Detection> detections;
 
-//    std::cout << "TensorRT DEBUG: Output dims: " << output_dims_.nbDims << " [";
-// for (int i = 0; i < output_dims_.nbDims; ++i) {
-//   std::cout << output_dims_.d[i];
-//   if (i < output_dims_.nbDims - 1) {std::cout << ", ";}
-// }
-// std::cout << "]" << std::endl;
 //    std::cout << "TensorRT DEBUG: Confidence threshold: " << conf_threshold << std::endl;
 
-  if (output_dims_.nbDims != 3) {
-    std::cerr << "Unexpected output shape dimensions: " << output_dims_.nbDims << std::endl;
-    return detections;
-  }
-
-  int64_t batch_size = output_dims_.d[0];
-  int64_t dim1 = output_dims_.d[1];
-  int64_t dim2 = output_dims_.d[2];
-
-  // Determine tensor layout (same logic as ONNX backend)
-  int64_t num_anchors, features;
-  bool transposed = false;
-
-  if (dim1 == 29 && dim2 > 1000) {
-    // Format: [1, 29, 8400]
-    features = dim1;
-    num_anchors = dim2;
-    transposed = true;
-//        std::cout << "TensorRT DEBUG: Detected transposed format [1, 29, "
-//              << num_anchors << "]" << std::endl;
-  } else if (dim2 == 29 && dim1 > 1000) {
-    // Format: [1, 8400, 29]
-    num_anchors = dim1;
-    features = dim2;
-    transposed = false;
-//        std::cout << "TensorRT DEBUG: Detected standard format [1, "
-//                  << num_anchors << ", 29]" << std::endl;
-  } else {
-//        std::cerr << "TensorRT DEBUG: Unexpected dimensions - dim1: "
-//                  << dim1 << ", dim2: " << dim2 << std::endl;
-    // Try to guess based on which dimension is larger
-    if (dim1 > dim2) {
-      num_anchors = dim1;
-      features = dim2;
-      transposed = false;
-    } else {
-      features = dim1;
-      num_anchors = dim2;
-      transposed = true;
-    }
-  }
-
-  int num_keypoints = (features - 5) / 3;
-  if (num_keypoints != 8) {
-//        std::cout << "TensorRT DEBUG: Warning - expected 8 keypoints, got "
-//                  << num_keypoints << std::endl;
-  }
+  // Tensor layout (same as the ONNX backend): [1, 8400, features] or [1, features, 8400],
+  // features = 4 + classes + 3 * keypoints, 29 for the one-class gate model with 8 keypoints
+  const int64_t num_anchors = layout.num_anchors;
+  const int num_keypoints = layout.num_keypoints;
 
   // Calculate proper coordinate transformation parameters
   float scale = scale_factors.width;   // Both width and height should be the same
@@ -516,31 +479,20 @@ std::vector<Detection> TensorRTBackend::postProcessPose(
 
   std::vector<cv::Rect2f> boxes;
   std::vector<float> confidences;
+  std::vector<int> class_ids;
   std::vector<std::vector<cv::Point3f>> keypoints_list;
 
   int valid_detections = 0;
   int high_conf_detections = 0;
 
   for (int64_t i = 0; i < num_anchors; ++i) {
-    float cx, cy, w, h, conf;
-
     // Extract basic detection data based on tensor layout
-    if (transposed) {
-      // [features, anchors] layout
-      cx = output[0 * num_anchors + i];
-      cy = output[1 * num_anchors + i];
-      w = output[2 * num_anchors + i];
-      h = output[3 * num_anchors + i];
-      conf = output[4 * num_anchors + i];
-    } else {
-      // [anchors, features] layout
-      const float * anchor_data = output + i * features;
-      cx = anchor_data[0];
-      cy = anchor_data[1];
-      w = anchor_data[2];
-      h = anchor_data[3];
-      conf = anchor_data[4];
-    }
+    const float cx = layout.at(output, i, 0);
+    const float cy = layout.at(output, i, 1);
+    const float w = layout.at(output, i, 2);
+    const float h = layout.at(output, i, 3);
+    // The best class's score is the confidence; with one class, its only score
+    const auto [class_id, conf] = layout.bestClass(output, i);
 
     // Debug first few detections
 //        if (i < 5) {
@@ -571,28 +523,25 @@ std::vector<Detection> TensorRTBackend::postProcessPose(
       float x2 = cx_orig + w_orig / 2;
       float y2 = cy_orig + h_orig / 2;
 
+      // A box just past the left or top edge is an object cut by it: keep it, clipped
+      snapToFrameEdge(x1, kEdgeTolerancePx / scale);
+      snapToFrameEdge(y1, kEdgeTolerancePx / scale);
+
       // Sanity check bounds
       if (x1 >= 0 && y1 >= 0 && x2 > x1 && y2 > y1 &&
         x1 < original_size.width && y1 < original_size.height)
       {
         boxes.push_back(cv::Rect2f(x1, y1, x2 - x1, y2 - y1));
         confidences.push_back(conf);
+        class_ids.push_back(class_id);
 
-        // Extract keypoints (8 keypoints for gate)
+        // Extract keypoints (8 for the gate model), after the class scores
         std::vector<cv::Point3f> kpts;
-        for (int k = 0; k < 8 && k < num_keypoints; ++k) {
-          float kx, ky, kconf;
-
-          if (transposed) {
-            kx = output[(5 + k * 3) * num_anchors + i];
-            ky = output[(5 + k * 3 + 1) * num_anchors + i];
-            kconf = output[(5 + k * 3 + 2) * num_anchors + i];
-          } else {
-            const float * anchor_data = output + i * features;
-            kx = anchor_data[5 + k * 3];
-            ky = anchor_data[5 + k * 3 + 1];
-            kconf = anchor_data[5 + k * 3 + 2];
-          }
+        kpts.reserve(num_keypoints);
+        for (int k = 0; k < num_keypoints; ++k) {
+          const float kx = layout.keypoint(output, i, k, 0);
+          const float ky = layout.keypoint(output, i, k, 1);
+          const float kconf = layout.keypoint(output, i, k, 2);
 
           // Apply the same coordinate transformation to keypoints
           float kx_no_pad = kx - pad_x;
@@ -638,7 +587,7 @@ std::vector<Detection> TensorRTBackend::postProcessPose(
     Detection det;
     det.bbox = boxes[idx];
     det.confidence = confidences[idx];
-    det.class_id = 0;     // Gate class
+    det.class_id = class_ids[idx];
     det.keypoints = keypoints_list[idx];
 
     detections.push_back(det);
