@@ -34,6 +34,7 @@
 
 #include "yolo_inference_cpp/tensorrt_backend.hpp"
 #include "yolo_inference_cpp/preprocessing.hpp"
+#include "yolo_inference_cpp/frame_edge.hpp"
 #include "yolo_inference_cpp/gatenet_postprocessing.hpp"
 
 namespace yolo_inference
@@ -521,6 +522,10 @@ std::vector<Detection> TensorRTBackend::postProcessPose(
       float y1 = cy_orig - h_orig / 2;
       float x2 = cx_orig + w_orig / 2;
       float y2 = cy_orig + h_orig / 2;
+
+      // A box just past the left or top edge is an object cut by it: keep it, clipped
+      snapToFrameEdge(x1, kEdgeTolerancePx / scale);
+      snapToFrameEdge(y1, kEdgeTolerancePx / scale);
 
       // Sanity check bounds
       if (x1 >= 0 && y1 >= 0 && x2 > x1 && y2 > y1 &&

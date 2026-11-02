@@ -34,6 +34,7 @@
 
 #include "yolo_inference_cpp/onnx_backend.hpp"
 #include "yolo_inference_cpp/preprocessing.hpp"
+#include "yolo_inference_cpp/frame_edge.hpp"
 #include "yolo_inference_cpp/gatenet_postprocessing.hpp"
 
 namespace yolo_inference
@@ -446,6 +447,10 @@ std::vector<Detection> ONNXBackend::postProcessPose(
       float x2 = cx_orig + w_orig / 2;
       float y2 = cy_orig + h_orig / 2;
 
+      // A box just past the left or top edge is an object cut by it: keep it, clipped
+      snapToFrameEdge(x1, kEdgeTolerancePx / scale);
+      snapToFrameEdge(y1, kEdgeTolerancePx / scale);
+
       // Sanity check bounds
       if (x1 >= 0 && y1 >= 0 && x2 > x1 && y2 > y1 &&
         x1 < original_size.width && y1 < original_size.height)
@@ -581,6 +586,10 @@ std::vector<Detection> ONNXBackend::postProcessDetection(
     float x2 = x1 + w / scale_x;
     float y2 = y1 + h / scale_y;
 
+    // A box just past the left or top edge is an object cut by it: keep it, clipped
+    snapToFrameEdge(x1, kEdgeTolerancePx / scale_x);
+    snapToFrameEdge(y1, kEdgeTolerancePx / scale_y);
+
     if (x1 >= 0 && y1 >= 0 && x2 > x1 && y2 > y1 &&
       x1 < original_size.width && y1 < original_size.height)
     {
@@ -689,6 +698,10 @@ std::vector<Detection> ONNXBackend::postProcessSegmentation(
     float y1 = (cy - pad_y) / scale_y - h / (2.0f * scale_y);
     float x2 = x1 + w / scale_x;
     float y2 = y1 + h / scale_y;
+
+    // A box just past the left or top edge is an object cut by it: keep it, clipped
+    snapToFrameEdge(x1, kEdgeTolerancePx / scale_x);
+    snapToFrameEdge(y1, kEdgeTolerancePx / scale_y);
 
     if (x1 >= 0 && y1 >= 0 && x2 > x1 && y2 > y1 &&
       x1 < original_size.width && y1 < original_size.height)
